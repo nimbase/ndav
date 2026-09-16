@@ -19,7 +19,7 @@
 - Built on [PowPow](https://github.com/openpeeps/powpow) async event loop HTTP/1 + HTTP/2 server.
 - Quick downloads through zero-copy file serving
 - [Flysystem](https://github.com/openpeeps/flysystem) sandboxed storage to its
-  own folder, crash-safe writes, and ready for new backends such as cloud disks
+  own folder, crash-safe writes,<br>and ready for new backends such as cloud disks
 - Calendars and contacts parsed with OpenParser's **iCalendar** and **vCard** formats
 - Runs on Linux, macOS and Windows (should)
 - Use it as a library (build on top of nDAV) or as a CLI binary
