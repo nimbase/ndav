@@ -1,42 +1,28 @@
 <p align="center">
-  <strong>webdav</strong><br>
-  WebDAV Class 1 + 2 and CalDAV/CardDAV core for Nim<br>
+  nDAV - A WebDAV Class 1 + 2 and CalDAV/CardDAV core for Nim<br>
   Made with the PowPow event library
 </p>
 
 <p align="center">
-  <code>nimble install webdav</code>
+  <code>nimble install ndav</code>
 </p>
 
 <p align="center">
-  <a href="https://nimbase.github.io/webdav/">API reference</a><br>
-  <img src="https://github.com/nimbase/webdav/workflows/test/badge.svg" alt="Github Actions">  <img src="https://github.com/nimbase/webdav/workflows/docs/badge.svg" alt="Github Actions">
+  <a href="https://nimbase.github.io/ndav/">API reference</a><br>
+  <img src="https://github.com/nimbase/ndav/workflows/test/badge.svg" alt="Github Actions">  <img src="https://github.com/nimbase/ndav/workflows/docs/badge.svg" alt="Github Actions">
 </p>
-
-WebDAV file sharing plus calendar and contact hosting in one embeddable server.
-It runs on [PowPow](https://github.com/openpeeps/powpow) (async event loop,
-HTTP/1 + HTTP/2), stores data through any
-[flysystem](https://github.com/openpeeps/flysystem) driver, and parses
-iCalendar and vCard via [openparser](https://github.com/openpeeps/openparser).
-The extra HTTP verbs (`PROPFIND`, `LOCK`, `REPORT`, ...) are registered at
-compile time through [voodoo](https://github.com/nimbase/voodoo) extensible
-enums, so `powpow` itself stays generic.
-
-> Import rule: `import webdav` must come before any direct `import powpow`,
-> so the DAV verbs are staged before powPow compiles.
 
 ## Features
 
 **General**
 
-- Built on PowPow, a fast event-driven networking library, so one process
-  serves many clients at once without threads
+- Built on [PowPow](https://github.com/openpeeps/powpow) async event loop HTTP/1 + HTTP/2 server.
 - Quick downloads through zero-copy file serving
-- Storage through Flysystem: sandboxed to its own folder, crash-safe writes,
-  and ready for new backends such as cloud disks
-- Calendars and contacts parsed with OpenParser, in the standard iCalendar
-  and vCard formats
-- Runs on Linux, macOS and Windows
+- [Flysystem](https://github.com/openpeeps/flysystem) sandboxed storage to its
+  own folder, crash-safe writes, and ready for new backends such as cloud disks
+- Calendars and contacts parsed with OpenParser's **iCalendar** and **vCard** formats
+- Runs on Linux, macOS and Windows (should)
+- Use it as a library (build on top of nDAV) or as a CLI binary
 
 **File sharing**
 
@@ -79,24 +65,6 @@ enums, so `powpow` itself stays generic.
 ## Examples
 
 ### Run the example server
-
-```sh
-clue build examples/dav_server.nim --out:bin/dav_server
-./bin/dav_server ./davroot 9001   # args optional, these are the defaults
-```
-
-### Run the server binary
-
-```sh
-clue build                        # drops the server binary in bin/
-./bin/webdav init                 # writes webdav.config.toml with defaults
-./bin/webdav init --force         # overwrite an existing config file
-./bin/webdav serve                # picks up ./webdav.config.toml when present
-./bin/webdav serve --root=./davroot --port=9001 --address=127.0.0.1
-./bin/webdav serve --config=webdav.config.toml  # explicit flags override it
-./bin/webdav --help               # full help, flags and version (via kapsis)
-./bin/webdav serve                # no options, no config file: error, exit 1
-```
 
 `webdav.config.toml` (all keys optional, as written by `init`):
 
@@ -156,7 +124,7 @@ curl -X REPORT http://localhost:9001/ab -H 'Depth: 1' \
 ### Embed it in your app
 
 ```nim
-import webdav  # before powpow, see the import rule above
+import ndav
 
 let srv = newDavServer(newLocalDriver("./davroot"))
 newHttpServer().start(srv.davHandler(), Port(9001))
@@ -168,7 +136,7 @@ Use `newMemoryDriver()` instead of `newLocalDriver()` for tests (see
 ### Use the client
 
 ```nim
-import webdav
+import ndav
 
 let dav = newDavClient("http://localhost:9001")
 dav.mkcalendar("/cal").ensure(Http201)
