@@ -23,6 +23,7 @@
 - Calendars and contacts parsed with OpenParser's **iCalendar** and **vCard** formats
 - Runs on Linux, macOS and Windows (should)
 - Use it as a library (build on top of nDAV) or as a CLI binary
+- Optional HTTP Basic auth with Argon2id password hashes (`webdav passwd`)
 
 **File sharing**
 
@@ -149,6 +150,43 @@ for r in found:
 dav.closeClient()
 ```
 
+### Auth
+
+No `[users]` table means an open server. Add users to require HTTP Basic
+on every request (passwords are stored as Argon2id hashes via nimcypher):
+
+```sh
+webdav passwd alice --config=./webdav.config.toml
+# Password: … / Confirm: …
+```
+
+```toml
+root = "./davroot"
+port = 9001
+address = "127.0.0.1"
+
+[users]
+alice = "CE5B8909…:F22D0AD0…"
+```
+
+```sh
+curl -u alice:s3cret -X PROPFIND http://localhost:9001/ -H 'Depth: 0' \
+  -d '<D:propfind xmlns:D="DAV:"><D:prop><D:current-user-principal/></D:prop></D:propfind>' -i
+# → 207 with <D:href>/principals/alice</D:href>
+```
+
+Authenticated clients see `current-user-principal` and
+`principal-collection-set` live props, and a read-only `/principals/`
+collection with one resource per user (`principal-URL`,
+`calendar-home-set` and `addressbook-home-set` point at `/`). In code:
+
+```nim
+let dav = newDavClient("http://localhost:9001")
+dav.setAuth("alice", "s3cret")
+dav.put("/hello.txt", "hi").ensure(Http201)
+dav.clearAuth()
+```
+
 ## Modules
 
 | Module | Job |
@@ -156,11 +194,12 @@ dav.closeClient()
 | `webdav/davmethod` | Compile-time verb registration (`PROPFIND` … `REPORT`, `MKCALENDAR`) |
 | `webdav/types` | Shared DAV types |
 | `webdav/davxml` | Hardened DAV XML parsing + `multistatus` builder |
-| `webdav/backend` | flysystem pairing, dead props, calendar/addressbook markers |
+| `webdav/auth` | HTTP Basic parsing, Argon2id verification (nimcypher) |
+| `webdav/backend` | flysystem pairing, dead props, calendar/addressbook markers, users |
 | `webdav/props` | Live property computation |
 | `webdav/locks` | Lock manager, `Timeout`/`If` parsing |
-| `webdav/caldav` | REPORT parsing, time-range + recurrence matching |
-| `webdav/carddav` | REPORT parsing, prop/param-filter + text-match matching |
+| `webdav/caldav` | REPORT parsing, time-range + recurrence matching, calendar sync |
+| `webdav/carddav` | REPORT parsing, prop/param-filter + text-match matching, addressbook sync |
 | `webdav/server` | Request router (`DavServer`, `davHandler`) |
 | `webdav/client` | Sync client (`DavClient`, builders, response helpers) |
 | `webdav/config` | Server config (`DavConfig`, TOML overlay, flag precedence) |
@@ -176,6 +215,7 @@ clue build tests/t_caldav.nim     --out:/tmp/t_caldav     && /tmp/t_caldav
 clue build tests/t_carddav.nim    --out:/tmp/t_carddav    && /tmp/t_carddav
 clue build tests/t_client.nim     --out:/tmp/t_client     && /tmp/t_client
 clue build tests/t_cli.nim        --out:/tmp/t_cli        && /tmp/t_cli
+clue build tests/t_auth.nim       --out:/tmp/t_auth       && /tmp/t_auth
 ```
 
 440+ checks total across unit suites and loopback servers (in-memory backend
@@ -186,25 +226,32 @@ plus live curl runs against the disk-backed example).
 - `Depth: infinity` on `PROPFIND` is capped to depth 1
 - `PROPPATCH` applies best-effort in order (no atomic all-or-nothing)
 - `If` evaluation is a subset (`Not` supported, etag conditions ignored)
-- No auth or principal model yet (any valid lock token satisfies a lock)
+- Auth is HTTP Basic only (no Digest/OAuth); any authenticated user has full
+  access (no per-resource ACLs yet); password hashes are Argon2id at the
+  interactive profile (1 MiB, 3 passes)
 - `GET` on a collection answers `403` (no HTML listing view)
 - Recurrence and timezone handling follow the documented subset in
   `src/webdav/caldav.nim` (clamped month overflow, UTC-normalized times)
 - CardDAV handling follows the documented subset in
   `src/webdav/carddav.nim` (UID presence not required but unique when present,
   unknown `address-data` versions fall back to stored bytes,
-  `sync-collection` keeps no delete tombstones so deletions surface as a full
-  resync, no `principal-property-search`/ACLs yet)
+  `sync-collection` keeps capped in-memory delete tombstones so known stale
+  tokens surface deletions as `404` entries while unknown tokens fall back
+  to a full resync, no `principal-property-search`/ACLs yet)
+- `sync-collection` tokens pair the collection ctag with a revision
+  (`ctag#rev`); legacy ctag-only tokens still answer with a full resync
+- Tombstone history is in-memory like the existing calendar/addressbook
+  markers, so it resets on restart
 
 ## Roadmap
 
 - [x] WebDAV client to match the server
 - [x] CardDAV (requires `openparser >= 0.3.3` for vCard support)
-- [ ] CalDAV `sync-collection` REPORT parity with CardDAV
-- [ ] Sync delete tombstones (404 entries instead of full resync)
+- [x] CalDAV `sync-collection` REPORT parity with CardDAV
+- [x] Sync delete tombstones (404 entries instead of full resync)
 - [ ] Discovery + principals (`/.well-known`, `current-user-principal`, `*-home-set`, `principal-property-search`)
 - [ ] CalDAV scheduling and `free-busy-query` REPORTs
-- [ ] Auth + principal collections (`calendar-home-set`, `current-user-principal`)
+- [x] Auth + principal collections (`calendar-home-set`, `current-user-principal`)
 - [ ] Full `Depth: infinity` and atomic `PROPPATCH`
 - [ ] Collection listing view for `GET`
 - [ ] Interop pass against real clients (Thunderbird, DAVx⁵, macOS)

@@ -524,3 +524,40 @@ suite "sync-collection loopback":
         [("Depth", "1")]).getStatusCode() == Http422
       expect DavClientError:
         discard syncTokenOf("""<D:multistatus xmlns:D="DAV:"/>""")
+
+  test "deletes surface as 404 tombstones":
+    withAb(20988):
+      discard client.request(HttpMkcol, base & "/ab", buildMkcolAddressbook())
+      discard client.request(HttpPut, base & "/ab/ada.vcf", Ada)
+      discard client.request(HttpPut, base & "/ab/bob.vcf", Bob)
+      let tok = syncTokenOf(client.request(HttpReport, base & "/ab",
+        buildSyncCollection(), [("Depth", "1")]).getBodyString())
+      discard client.request(HttpDelete, base & "/ab/ada.vcf")
+      let s2 = client.request(HttpReport, base & "/ab",
+        buildSyncCollection(tok), [("Depth", "1")])
+      check s2.getStatusCode() == Http207
+      let b2 = s2.getBodyString()
+      check "bob.vcf" in b2
+      check "ada.vcf" in b2
+      check "404 Not Found" in b2
+      let tok2 = syncTokenOf(b2)
+      check tok2 != tok
+      # Steady on the new token: no responses.
+      let s3 = client.request(HttpReport, base & "/ab",
+        buildSyncCollection(tok2), [("Depth", "1")])
+      check "<D:response>" notin s3.getBodyString()
+      # MOVE-out also leaves a tombstone at the source.
+      discard client.request(HttpPut, base & "/ab/c.vcf", AdaUid)
+      let tok3 = syncTokenOf(client.request(HttpReport, base & "/ab",
+        buildSyncCollection(tok2), [("Depth", "1")]).getBodyString())
+      discard client.request(HttpMove, base & "/ab/c.vcf", "",
+        [("Destination", base & "/outside.vcf")])
+      let s4 = client.request(HttpReport, base & "/ab",
+        buildSyncCollection(tok3), [("Depth", "1")])
+      check s4.getStatusCode() == Http207
+      check "c.vcf" in s4.getBodyString()
+      check "404 Not Found" in s4.getBodyString()
+      # Unknown token: full resync, no tombstones.
+      let s5 = client.request(HttpReport, base & "/ab",
+        buildSyncCollection("bogus"), [("Depth", "1")])
+      check "404 Not Found" notin s5.getBodyString()

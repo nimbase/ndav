@@ -4,9 +4,12 @@
 # - MKCALENDAR creates a collection flagged as a calendar. A request body
 #   with `<set><prop>` children is stored best-effort as dead props;
 #   protected live props in the body are rejected with `403`.
-# - REPORT supports `calendar-query` (comp-filter + time-range) and
-#   `calendar-multiget` (href list). Both honor the `<prop>` selector:
-#   `getetag` and `calendar-data` plus any other requested live/dead prop.
+# - REPORT supports `calendar-query` (comp-filter + time-range),
+#   `calendar-multiget` (href list) and `sync-collection` (RFC 6578,
+#   ctag+revision tokens shared with CardDAV; deletions surface as `404`
+#   tombstones for known stale tokens, unknown tokens answer with a full
+#   member listing). All three honor the `<prop>` selector: `getetag` and
+#   `calendar-data` plus any other requested live/dead prop.
 # - time-range applies to VEVENT (`DTSTART`/`DTEND`/`DURATION`) and VTODO
 #   (`DTSTART`/`DUE`). Components without usable dates only match a query
 #   that carries no time-range.

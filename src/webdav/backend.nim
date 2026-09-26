@@ -22,12 +22,20 @@ type
     value*: string ## Text content (when the stored prop was pure text).
     xml*: string   ## Verbatim inner XML (when structural), round-tripped.
 
+  SyncChange* = object
+    rev*: int    ## Per-collection revision that introduced the delete.
+    href*: string ## Deleted member href (URL path).
+
   DavBackend* = ref object
     driver*: StorageDriver
     locks*: LockManager
     deadProps*: Table[string, Table[string, DeadProp]] ## urlPath -> key -> prop
     calendars*: Table[string, bool] ## urlPath of a collection -> is calendar
     addressbooks*: Table[string, bool] ## urlPath of a collection -> is addressbook
+    syncRevs*: Table[string, int] ## sync collection -> current revision.
+    syncDeletes*: Table[string, seq[SyncChange]] ## sync collection -> tombstones.
+    users*: Table[string, string] ## name -> Argon2id `salt:hash`.
+      ## Empty means auth is disabled (open server).
 
   MemNode = ref object
     isDir: bool
@@ -224,25 +232,70 @@ method append*(d: MemoryDriver, path, content: string) =
 
 # ── DavBackend helpers ───────────────────────────────────────────────────────
 
-proc newDavBackend*(driver: StorageDriver): DavBackend =
+proc newDavBackend*(driver: StorageDriver,
+    users = initTable[string, string]()): DavBackend =
   DavBackend(driver: driver, locks: newLockManager(),
     deadProps: initTable[string, Table[string, DeadProp]](),
     calendars: initTable[string, bool](),
-    addressbooks: initTable[string, bool]())
+    addressbooks: initTable[string, bool](),
+    syncRevs: initTable[string, int](),
+    syncDeletes: initTable[string, seq[SyncChange]](),
+    users: users)
 
 proc isCalendarCollection*(b: DavBackend, urlPath: string): bool {.inline.} =
   ## True when `urlPath` was created via MKCALENDAR (CalDAV calendar).
   b.calendars.getOrDefault(urlPath, false)
 
-proc markCalendar*(b: DavBackend, urlPath: string) {.inline.} =
+proc markCalendar*(b: DavBackend, urlPath: string) =
   b.calendars[urlPath] = true
+  if urlPath notin b.syncRevs:
+    b.syncRevs[urlPath] = 0
+    b.syncDeletes[urlPath] = @[]
 
 proc isAddressbookCollection*(b: DavBackend, urlPath: string): bool {.inline.} =
   ## True when `urlPath` was created via extended MKCOL (CardDAV addressbook).
   b.addressbooks.getOrDefault(urlPath, false)
 
-proc markAddressbook*(b: DavBackend, urlPath: string) {.inline.} =
+const PrincipalsRoot* = "/principals"
+  ## Virtual collection listing one principal resource per configured user.
+  ## Served from the users table; never touches the storage driver.
+
+proc principalUserName*(urlPath: string): string =
+  ## User part of a `/principals/<name>` path, else "". Nested paths and
+  ## the collection itself yield "".
+  if not urlPath.startsWith(PrincipalsRoot & "/"):
+    return ""
+  let rest = urlPath[PrincipalsRoot.len + 1 .. ^1]
+  if rest.len == 0 or "/" in rest:
+    return ""
+  rest
+
+proc isPrincipalsCollection*(urlPath: string): bool {.inline.} =
+  urlPath == PrincipalsRoot
+
+proc isPrincipalResource*(b: DavBackend, urlPath: string): bool =
+  ## True when `urlPath` names a configured user under `/principals/`.
+  let name = principalUserName(urlPath)
+  name.len > 0 and name in b.users
+
+proc isPrincipalPath*(b: DavBackend, urlPath: string): bool {.inline.} =
+  ## True for the virtual principals collection or any principal resource.
+  isPrincipalsCollection(urlPath) or b.isPrincipalResource(urlPath)
+
+proc isPrincipalsSubtree*(urlPath: string): bool {.inline.} =
+  ## True for anything under `/principals/` (collection, resource, or
+  ## unknown): the whole subtree is virtual and read-only.
+  urlPath == PrincipalsRoot or urlPath.startsWith(PrincipalsRoot & "/")
+
+proc principalHref*(name: string): string {.inline.} =
+  ## URL path of a principal resource.
+  PrincipalsRoot & "/" & name
+
+proc markAddressbook*(b: DavBackend, urlPath: string) =
   b.addressbooks[urlPath] = true
+  if urlPath notin b.syncRevs:
+    b.syncRevs[urlPath] = 0
+    b.syncDeletes[urlPath] = @[]
 
 func toDriverPath*(urlPath: string): string {.inline.} =
   ## `/a/b` -> `a/b`; `/` -> `""`.
@@ -271,6 +324,7 @@ proc delDead*(b: DavBackend, urlPath, ns, name: string): bool =
 proc forgetDead*(b: DavBackend, urlPath: string) =
   ## Drop dead props for a resource and, for collections, its members.
   ## Calendar / addressbook markers travel with the same lifetime.
+  ## Sync revision logs travel too (deleted collections lose history).
   var doomed: seq[string]
   for k in b.deadProps.keys:
     if k == urlPath or k.startsWith(urlPath & "/"):
@@ -289,6 +343,13 @@ proc forgetDead*(b: DavBackend, urlPath: string) =
       doomedAb.add(k)
   for k in doomedAb:
     b.addressbooks.del(k)
+  var doomedSync: seq[string]
+  for k in b.syncRevs.keys:
+    if k == urlPath or k.startsWith(urlPath & "/"):
+      doomedSync.add(k)
+  for k in doomedSync:
+    b.syncRevs.del(k)
+    b.syncDeletes.del(k)
 
 proc copyDead*(b: DavBackend, src, dest: string, overwrite: bool) =
   ## Duplicate dead props across COPY. For collections, remap members.
@@ -323,8 +384,111 @@ proc copyDead*(b: DavBackend, src, dest: string, overwrite: bool) =
       if k == src: dest
       else: dest & k[src.len .. ^1]
     b.addressbooks[nk] = true
+  # Sync delete history is never carried: hrefs are collection-scoped and
+  # old revisions are meaningless at the destination. Fresh logs give new
+  # tokens (unknown old tokens fall back to full resync).
+  for k in carriedCal:
+    let nk =
+      if k == src: dest
+      else: dest & k[src.len .. ^1]
+    b.syncRevs[nk] = 0
+    b.syncDeletes[nk] = @[]
+  for k in carriedAb:
+    let nk =
+      if k == src: dest
+      else: dest & k[src.len .. ^1]
+    b.syncRevs[nk] = 0
+    b.syncDeletes[nk] = @[]
 
 proc moveDead*(b: DavBackend, src, dest: string, overwrite: bool) =
   ## Carry dead props across MOVE. For collections, remap members.
   b.copyDead(src, dest, overwrite)
   b.forgetDead(src)
+
+const MaxSyncDeletes* = 100
+  ## Cap on tombstones kept per sync collection. Older entries are dropped;
+  ## tokens predating the retained window answer as unknown (full resync).
+
+proc isSyncCollection*(b: DavBackend, urlPath: string): bool {.inline.} =
+  ## True when `urlPath` is a calendar or addressbook collection.
+  b.isCalendarCollection(urlPath) or b.isAddressbookCollection(urlPath)
+
+proc syncRevOf*(b: DavBackend, coll: string): int {.inline.} =
+  b.syncRevs.getOrDefault(coll, 0)
+
+proc ensureSyncLog*(b: DavBackend, coll: string) =
+  ## Start revision history for a fresh sync collection (idempotent).
+  if coll notin b.syncRevs:
+    b.syncRevs[coll] = 0
+    b.syncDeletes[coll] = @[]
+
+proc bumpSync*(b: DavBackend, coll: string): int =
+  ## Record a member change (PUT overwrite, PROPPATCH, COPY-in). Returns
+  ## the new revision. Initializes the log for freshly copied collections.
+  b.ensureSyncLog(coll)
+  inc b.syncRevs[coll]
+  result = b.syncRevs[coll]
+  # Prune oldest tombstones past the cap (keeps newest).
+  var log = b.syncDeletes.getOrDefault(coll, @[])
+  if log.len > MaxSyncDeletes:
+    b.syncDeletes[coll] = log[^MaxSyncDeletes .. ^1]
+
+proc recordSyncDelete*(b: DavBackend, coll, href: string): int =
+  ## Record a member removal (DELETE, MOVE-out). Bumps the revision and
+  ## appends a tombstone. Replaces any older tombstone for the same href
+  ## so a delete/recreate/delete cycle keeps a single entry.
+  b.ensureSyncLog(coll)
+  inc b.syncRevs[coll]
+  result = b.syncRevs[coll]
+  var log = b.syncDeletes.getOrDefault(coll, @[])
+  var kept: seq[SyncChange]
+  for c in log:
+    if c.href != href:
+      kept.add(c)
+  kept.add(SyncChange(rev: result, href: href))
+  if kept.len > MaxSyncDeletes:
+    kept = kept[^MaxSyncDeletes .. ^1]
+  b.syncDeletes[coll] = kept
+
+proc makeSyncToken*(b: DavBackend, coll, ctag: string): string =
+  ## Opaque token pairing the ctag with the revision: `ctag#rev`.
+  ## Legacy ctag-only tokens (pre-tombstone clients) parse as unknown rev
+  ## and fall back to a full resync without tombstones.
+  ctag & "#" & $b.syncRevOf(coll)
+
+proc splitSyncToken*(tok: string): tuple[ctag: string, rev: int, ok: bool] =
+  ## Split `ctag#rev`. `ok` is false for legacy or malformed tokens.
+  let i = tok.rfind('#')
+  if i < 0:
+    return ("", -1, false)
+  try:
+    (tok[0 ..< i], parseInt(tok[i + 1 .. ^1]), true)
+  except ValueError:
+    ("", -1, false)
+
+proc syncDeletesSince*(b: DavBackend, coll: string,
+    sinceRev: int): tuple[hrefs: seq[string], known: bool] =
+  ## Tombstones with `rev > sinceRev`. `known=false` when `sinceRev` is
+  ## newer than current, negative, or older than the retained window
+  ## (caller must answer a full resync without tombstones).
+  let cur = b.syncRevOf(coll)
+  if sinceRev < 0 or sinceRev > cur:
+    return (@[], false)
+  let log = b.syncDeletes.getOrDefault(coll, @[])
+  if log.len == 0:
+    return (@[], true)
+  if sinceRev < log[0].rev - 1 and cur > MaxSyncDeletes:
+    # Window overflow: oldest retained rev already newer than requested.
+    # When within cap the first entry check below still applies; this
+    # guards the case where pruning dropped history before log[0].
+    if sinceRev < cur - MaxSyncDeletes:
+      return (@[], false)
+  # If history was pruned exactly at the boundary, a token older than the
+  # oldest retained delete is unknown unless it predates all deletes.
+  if sinceRev < log[0].rev - 1 and log.len >= MaxSyncDeletes:
+    return (@[], false)
+  var hrefs: seq[string]
+  for c in log:
+    if c.rev > sinceRev:
+      hrefs.add(c.href)
+  (hrefs, true)

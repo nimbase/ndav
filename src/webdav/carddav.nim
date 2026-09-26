@@ -7,10 +7,14 @@
 #   protected live props in the body are rejected with `403`.
 # - REPORT supports `addressbook-query` (prop-filter + param-filter +
 #   text-match + is-not-defined), `addressbook-multiget` (href list) and
-#   `sync-collection` (RFC 6578, ctag-based tokens; no delete tombstones,
-#   so a stale or unknown token answers with a full member listing).
+#   `sync-collection` (RFC 6578, ctag+revision tokens; deletions surface as
+#   `404` tombstone responses for known stale tokens, unknown tokens answer
+#   with a full member listing). Tombstone history is in-memory and capped
+#   (`MaxSyncDeletes` in `backend.nim`); overflow falls back to full resync.
 #   Query and multiget honor the `<prop>` selector: `getetag` and
-#   `address-data` plus any other requested live/dead prop.
+#   `address-data` plus any other requested live/dead prop. Sync also
+#   accepts `calendar-data` so one parser serves CalDAV sync parity
+#   (see `server.nim`: calendar sync answers with `calendar-data`).
 # - text-match collations: `i;unicode-casemap` (default, case-insensitive),
 #   `i;ascii-casemap`, `i;octet` (byte-exact). match-types: `contains`
 #   (default), `equals`, `starts-with`, `ends-with`. `negate-condition="yes"`
@@ -86,12 +90,15 @@ type
 
   SyncCollectionRequest* = object
     ## RFC 6578 `sync-collection` REPORT. The root element lives in the
-    ## DAV: namespace (`<D:sync-collection>`), not CardDAV's.
+    ## DAV: namespace (`<D:sync-collection>`), not CardDAV's. Shared by
+    ## addressbook and calendar sync: `wantAddressData` selects vCard
+    ## responses, `wantCalData` selects iCalendar responses.
     token*: string
     hasToken*: bool
     infinite*: bool ## `sync-level` was `infinite` (behaves as Depth 1 here).
     wantEtag*: bool
     wantAddressData*: bool
+    wantCalData*: bool
     addressDataPrefs*: seq[CardAddressDataPref]
     hasUnsupportedAddressData*: bool
     extraProps*: seq[string]
@@ -225,13 +232,15 @@ proc parseCardPropFilter(node: XmlNode): CardPropFilter =
 
 proc parseCardPropSelector(prop: XmlNode, wantEtag, wantAddressData: var bool,
     prefs: var seq[CardAddressDataPref], hasUnsupported: var bool,
-    extraProps: var seq[string]) =
+    extraProps: var seq[string], wantCalData: var bool) =
   ## Shared `<prop>` selector for query, multiget and sync-collection:
-  ## `getetag`, `address-data` (with `content-type`/`version` preferences)
+  ## `getetag`, `address-data` (with `content-type`/`version` preferences),
+  ## `calendar-data` (calendar sync parity; no content negotiation),
   ## plus any other requested live/dead prop.
   for c in prop.elementChildren():
     case localName(c.tag)
     of "getetag": wantEtag = true
+    of "calendar-data": wantCalData = true
     of "address-data":
       wantAddressData = true
       let ct = attrOf(c, "content-type").strip()
@@ -272,9 +281,14 @@ proc parseCardReport*(body: string): CardReportRequest =
   let prop = root.findChild("prop")
   if prop == nil:
     raise newException(DavXmlError, "REPORT needs a prop child")
+  var wantCalDataQ = false
   parseCardPropSelector(prop, result.wantEtag, result.wantAddressData,
     result.addressDataPrefs, result.hasUnsupportedAddressData,
-    result.extraProps)
+    result.extraProps, wantCalDataQ)
+  if wantCalDataQ:
+    # `calendar-data` is only meaningful to calendar sync; in an
+    # addressbook query/multiget it stays a 404 extra prop as before.
+    result.extraProps.add("calendar-data")
   if result.kind == rkAddressMultiget:
     for h in root.childrenByLocal("href"):
       let v = nodeText(h).strip()
@@ -308,7 +322,7 @@ proc parseSyncCollection*(body: string): SyncCollectionRequest =
     raise newException(DavXmlError, "REPORT needs a prop child")
   parseCardPropSelector(prop, result.wantEtag, result.wantAddressData,
     result.addressDataPrefs, result.hasUnsupportedAddressData,
-    result.extraProps)
+    result.extraProps, result.wantCalData)
   let st = root.findChild("sync-token")
   if st != nil:
     result.hasToken = true

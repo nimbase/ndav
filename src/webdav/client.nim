@@ -14,8 +14,10 @@ export davmethod
 import std/httpcore except HttpMethod
 import std/strutils
 import powpow
+import ./auth
 import ./davxml
 
+export auth
 export davxml
 
 type
@@ -24,6 +26,7 @@ type
   DavClient* = ref object
     http*: HttpClient
     base*: string ## Origin + optional prefix, no trailing slash.
+    authHeader*: string ## Full `Authorization` value, "" when anonymous.
 
 proc wrapDavClient*(http: HttpClient, base: string): DavClient =
   ## Use a prebuilt client (custom TLS, pool tuning, or a loopback test
@@ -40,6 +43,14 @@ proc closeClient*(c: DavClient) =
   ## both overloads stay unambiguous in one scope.
   c.http.close()
 
+proc setAuth*(c: DavClient, user, pass: string) =
+  ## Attach HTTP Basic credentials to every request from this client.
+  c.authHeader = encodeBasic(user, pass)
+
+proc clearAuth*(c: DavClient) =
+  ## Drop credentials; further requests go out anonymous.
+  c.authHeader = ""
+
 proc urlFor*(c: DavClient, path: string): string =
   if path.startsWith("/"): c.base & path
   else: c.base & "/" & path
@@ -54,7 +65,13 @@ proc tokenValue(token: string): string =
 
 proc raw*(c: DavClient, meth: HttpMethod, path: string; body = "",
     headers: openArray[(string, string)] = []): HttpClientResponse {.discardable.} =
-  c.http.request(meth, c.urlFor(path), body, headers)
+  if c.authHeader.len > 0:
+    var hs = @[("Authorization", c.authHeader)]
+    for h in headers:
+      hs.add(h)
+    c.http.request(meth, c.urlFor(path), body, hs)
+  else:
+    c.http.request(meth, c.urlFor(path), body, headers)
 
 # ── Request builders ─────────────────────────────────────────────────────
 
@@ -239,8 +256,9 @@ proc buildAddressbookMultiget*(hrefs: seq[string], wantEtag = true,
 proc buildSyncCollection*(token = "", wantEtag = true,
     wantAddressData = true, extra: seq[string] = @[],
     version = "", limit = -1): string =
-  ## RFC 6578 `sync-collection` REPORT body. Empty `token` starts a new
-  ## sync (server answers with all members plus the current token).
+  ## RFC 6578 `sync-collection` REPORT body for addressbooks. Empty `token`
+  ## starts a new sync (server answers with all members plus the current
+  ## token).
   let root = newDavElement("sync-collection")
   root.addAttr("xmlns:D", DavNs)
   root.addAttr("xmlns:CR", CardNs)
@@ -249,6 +267,37 @@ proc buildSyncCollection*(token = "", wantEtag = true,
     prop.addChild(newDavElement("getetag"))
   if wantAddressData:
     prop.addChild(addressDataElement(version))
+  for n in extra:
+    prop.addChild(newDavElement(n))
+  root.addChild(prop)
+  let st = newDavElement("sync-token")
+  if token.len > 0:
+    st.addChild(newXmlText(token))
+  root.addChild(st)
+  let sl = newDavElement("sync-level")
+  sl.addChild(newXmlText("1"))
+  root.addChild(sl)
+  if limit >= 0:
+    let lim = newDavElement("limit")
+    let nr = newDavElement("nresults")
+    nr.addChild(newXmlText($limit))
+    lim.addChild(nr)
+    root.addChild(lim)
+  davDoc(root)
+
+proc buildCalSyncCollection*(token = "", wantEtag = true,
+    wantCalData = true, extra: seq[string] = @[],
+    limit = -1): string =
+  ## RFC 6578 `sync-collection` REPORT body for calendars (CalDAV parity
+  ## with `buildSyncCollection`). Empty `token` starts a new sync.
+  let root = newDavElement("sync-collection")
+  root.addAttr("xmlns:D", DavNs)
+  root.addAttr("xmlns:C", CalNs)
+  let prop = newDavElement("prop")
+  if wantEtag:
+    prop.addChild(newDavElement("getetag"))
+  if wantCalData:
+    prop.addChild(newCalElement("calendar-data"))
   for n in extra:
     prop.addChild(newDavElement(n))
   root.addChild(prop)

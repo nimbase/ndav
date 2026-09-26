@@ -70,6 +70,15 @@ suite "client setup and builders":
     let mrep = parseCalReport(mg)
     check mrep.kind == rkMultiget
     check mrep.hrefs == @["/cal/a.ics", "/cal/b.ics"]
+    let cs = parseSyncCollection(buildCalSyncCollection("t", true, true,
+      @["displayname"], 3))
+    check cs.wantCalData == true
+    check cs.token == "t"
+    check cs.extraProps == @["displayname"]
+    check cs.hasLimit and cs.limit == 3
+    let asy = parseSyncCollection(buildSyncCollection("t2"))
+    check asy.wantAddressData == true
+    check asy.token == "t2"
     let pf = parsePropfind(buildPropfindProp(@["displayname", "getetag"]))
     check pf.kind == pfProp
     check pf.props == @["displayname", "getetag"]
@@ -185,6 +194,24 @@ suite "client caldav loopback":
           mcodes.add(propstatCode(ps.status))
       check 200 in mcodes
       check 404 in mcodes
+
+  test "calendar sync through builder with tombstone":
+    withClient(20989):
+      check dav.mkcalendar("/cal").getStatusCode() == Http201
+      check dav.put("/cal/ev.ics", Ev1).getStatusCode() == Http201
+      let s = dav.report("/cal", buildCalSyncCollection()).ensure(Http207)
+      let tok = syncTokenOf(s.getBodyString())
+      check tok.len > 0
+      let steady = dav.report("/cal",
+        buildCalSyncCollection(tok)).multistatus()
+      check steady.len == 0
+      check dav.delete("/cal/ev.ics").getStatusCode() == Http204
+      let s2 = dav.report("/cal",
+        buildCalSyncCollection(tok)).ensure(Http207)
+      let b2 = s2.getBodyString()
+      check "ev.ics" in b2
+      check "404 Not Found" in b2
+      check syncTokenOf(b2) != tok
 
 suite "client carddav loopback":
   test "mkcol addressbook, versioned query and sync through builders":

@@ -15,6 +15,7 @@ const
     "getlastmodified", "creationdate", "getetag",
     "lockdiscovery", "supportedlock",
     "getctag", "supported-report-set",
+    "current-user-principal", "principal-collection-set", "principal-URL",
   ]
     ## Live properties a PROPPATCH `set`/`remove` must reject with 403.
     ## `displayname` is live but client-writable per RFC 4918.
@@ -102,8 +103,14 @@ proc davMimeType*(b: DavBackend, urlPath: string): string =
   except CatchableError:
     "application/octet-stream"
 
-proc liveProps*(b: DavBackend, urlPath: string): seq[DavProp] =
-  ## All live properties for a resource.
+proc hrefXml*(href: string): string {.inline.} =
+  ## `<D:href>` element for href-valued live properties.
+  """<D:href xmlns:D="DAV:">""" & href & """</D:href>"""
+
+proc liveProps*(b: DavBackend, urlPath: string, currentUser = ""): seq[DavProp] =
+  ## All live properties for a resource. `currentUser` is the authenticated
+  ## name ("", when auth is disabled); a non-empty value adds the RFC 5397
+  ## identity props (`current-user-principal`, `principal-collection-set`).
   let meta = b.driver.metadata(toDriverPath(urlPath))
   let isDir = meta.isDir
   let isCal = isDir and b.isCalendarCollection(urlPath)
@@ -145,7 +152,9 @@ proc liveProps*(b: DavBackend, urlPath: string): seq[DavProp] =
       """</D:report></D:supported-report>""" &
       """<D:supported-report xmlns:D="DAV:">""" &
       """<D:report><C:calendar-multiget xmlns:C="""" & CalNs & """" />""" &
-      """</D:report></D:supported-report>"""))
+      """</D:report></D:supported-report>""" &
+      """<D:supported-report xmlns:D="DAV:">""" &
+      """<D:report><D:sync-collection /></D:report></D:supported-report>"""))
   if isAb:
     result.add(DavProp(ns: DavNs, name: "getctag",
       value: b.addressbookCtag(urlPath)))
@@ -176,6 +185,11 @@ proc liveProps*(b: DavBackend, urlPath: string): seq[DavProp] =
       value: $meta.size))
     result.add(DavProp(ns: DavNs, name: "getcontenttype",
       value: b.davMimeType(urlPath)))
+  if currentUser.len > 0:
+    result.add(DavProp(ns: DavNs, name: "current-user-principal",
+      xml: hrefXml(principalHref(currentUser))))
+    result.add(DavProp(ns: DavNs, name: "principal-collection-set",
+      xml: hrefXml(PrincipalsRoot & "/")))
 
 proc deadPropsList*(b: DavBackend, urlPath: string): seq[DavProp] =
   for k, v in b.getDead(urlPath):

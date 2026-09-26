@@ -335,3 +335,106 @@ suite "ctag and marker lifetime":
       let q = client.request(HttpReport, base & "/cal2", QueryFeb,
         [("Depth", "1")])
       check q.getStatusCode() == Http207
+
+suite "sync-collection loopback":
+  test "builder round-trips through the sync parser":
+    let b = buildCalSyncCollection()
+    let r = parseSyncCollection(b)
+    check r.wantEtag == true
+    check r.wantCalData == true
+    check r.hasToken == true
+    check r.token == ""
+    let b2 = buildCalSyncCollection("tok", true, true, @["displayname"], 5)
+    let r2 = parseSyncCollection(b2)
+    check r2.token == "tok"
+    check r2.extraProps == @["displayname"]
+    check r2.hasLimit and r2.limit == 5
+
+  test "initial, steady and stale tokens":
+    withCal(20985):
+      discard client.request(HttpMkcalendar, base & "/cal")
+      discard client.request(HttpPut, base & "/cal/ev1.ics", Ev1)
+      discard client.request(HttpPut, base & "/cal/daily.ics", EvDaily)
+      let s1 = client.request(HttpReport, base & "/cal",
+        buildCalSyncCollection(), [("Depth", "1")])
+      check s1.getStatusCode() == Http207
+      let b1 = s1.getBodyString()
+      check "ev1.ics" in b1
+      check "daily.ics" in b1
+      check "sync-token" in b1
+      check "BEGIN:VCALENDAR" in b1
+      let tok = syncTokenOf(b1)
+      check tok.len > 0
+      # Steady: same token, no member responses.
+      let s2 = client.request(HttpReport, base & "/cal",
+        buildCalSyncCollection(tok), [("Depth", "1")])
+      check s2.getStatusCode() == Http207
+      check "<D:response>" notin s2.getBodyString()
+      check syncTokenOf(s2.getBodyString()) == tok
+      # Change moves the token; the stale token resyncs fully.
+      discard client.request(HttpPut, base & "/cal/todo.ics", Todo1)
+      let s3 = client.request(HttpReport, base & "/cal",
+        buildCalSyncCollection(tok), [("Depth", "1")])
+      check s3.getStatusCode() == Http207
+      check "todo.ics" in s3.getBodyString()
+      check syncTokenOf(s3.getBodyString()) != tok
+
+  test "deletes surface as 404 tombstones, recreates as live":
+    withCal(20986):
+      discard client.request(HttpMkcalendar, base & "/cal")
+      discard client.request(HttpPut, base & "/cal/ev1.ics", Ev1)
+      discard client.request(HttpPut, base & "/cal/daily.ics", EvDaily)
+      let tok = syncTokenOf(client.request(HttpReport, base & "/cal",
+        buildCalSyncCollection(), [("Depth", "1")]).getBodyString())
+      discard client.request(HttpDelete, base & "/cal/ev1.ics")
+      let s2 = client.request(HttpReport, base & "/cal",
+        buildCalSyncCollection(tok), [("Depth", "1")])
+      check s2.getStatusCode() == Http207
+      let b2 = s2.getBodyString()
+      check "daily.ics" in b2
+      check "ev1.ics" in b2
+      check "404 Not Found" in b2
+      let tok2 = syncTokenOf(b2)
+      check tok2 != tok
+      # Steady on the new token: tombstone already consumed.
+      let s3 = client.request(HttpReport, base & "/cal",
+        buildCalSyncCollection(tok2), [("Depth", "1")])
+      check "<D:response>" notin s3.getBodyString()
+      # Recreate: the href is live again, not a tombstone.
+      discard client.request(HttpPut, base & "/cal/ev1.ics", Ev1)
+      let s4 = client.request(HttpReport, base & "/cal",
+        buildCalSyncCollection(tok2), [("Depth", "1")])
+      check s4.getStatusCode() == Http207
+      let rs = parseMultistatus(s4.getBodyString())
+      var live = 0
+      var dead = 0
+      for r in rs:
+        if r.href == "/cal/ev1.ics":
+          for ps in r.propstats:
+            if propstatCode(ps.status) div 100 == 2:
+              inc live
+            elif propstatCode(ps.status) == 404 and ps.props.len == 0:
+              inc dead
+      check live == 1
+      check dead == 0
+      # Unknown token: full resync, no tombstones.
+      let s5 = client.request(HttpReport, base & "/cal",
+        buildCalSyncCollection("bogus"), [("Depth", "1")])
+      check s5.getStatusCode() == Http207
+      check "daily.ics" in s5.getBodyString()
+      check "404 Not Found" notin s5.getBodyString()
+
+  test "sync needs calendar, depth 1, valid level":
+    withCal(20987):
+      discard client.request(HttpMkcol, base & "/plain")
+      check client.request(HttpReport, base & "/plain",
+        buildCalSyncCollection(), [("Depth", "1")]).getStatusCode() == Http403
+      discard client.request(HttpMkcalendar, base & "/cal")
+      check client.request(HttpReport, base & "/cal",
+        buildCalSyncCollection(), [("Depth", "infinity")]).getStatusCode() == Http400
+      let badLevel = """<D:sync-collection xmlns:D="DAV:">""" &
+        """<D:prop><D:getetag/></D:prop>""" &
+        """<D:sync-token/><D:sync-level>7</D:sync-level>""" &
+        """</D:sync-collection>"""
+      check client.request(HttpReport, base & "/cal", badLevel,
+        [("Depth", "1")]).getStatusCode() == Http422

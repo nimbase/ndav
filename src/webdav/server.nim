@@ -13,27 +13,37 @@
 #
 # CalDAV core (RFC 4791, see `caldav.nim` for the documented subset):
 # `MKCALENDAR` creates calendar collections; REPORT serves
-# `calendar-query` (comp-filter + time-range with recurrence expansion)
-# and `calendar-multiget`. PUT into a calendar requires iCalendar object
-# data. `OPTIONS` advertises `calendar-access`.
+# `calendar-query` (comp-filter + time-range with recurrence expansion),
+# `calendar-multiget` and `sync-collection` (RFC 6578 parity with CardDAV).
+# PUT into a calendar requires iCalendar object data. `OPTIONS` advertises
+# `calendar-access`.
 #
 # CardDAV core (RFC 6352, see `carddav.nim` for the documented subset):
 # extended `MKCOL` with `<resourcetype><addressbook/></resourcetype>`
 # creates addressbook collections; REPORT serves `addressbook-query`
-# (prop-filter + param-filter + text-match) and `addressbook-multiget`.
+# (prop-filter + param-filter + text-match), `addressbook-multiget` and
+# `sync-collection` (RFC 6578 with delete tombstones).
 # PUT into an addressbook requires vCard object data. `OPTIONS` advertises
 # `addressbook-access`.
+#
+# Auth (see `auth.nim`): HTTP Basic (RFC 7617) with Argon2id hashes from the
+# `[users]` config table. Empty users means an open server; otherwise every
+# request needs valid credentials (`401` + `WWW-Authenticate`). Principals
+# live under virtual `/principals/` (no driver storage); any authenticated
+# user has full access (no per-resource ACLs yet).
 
 import ./davmethod # stage verb extensions before powpow compiles
 export davmethod
 import std/httpcore except HttpMethod
-import std/[strutils, uri, options]
+import std/[strutils, uri, options, tables, algorithm, sequtils]
 import powpow
+import ./auth
 import ./backend
 import ./props
 import ./caldav
 import ./carddav
 
+export auth
 export backend
 export props
 export caldav
@@ -47,10 +57,14 @@ type
   DavServer* = ref object
     backend*: DavBackend
 
-proc newDavServer*(driver: StorageDriver): DavServer =
-  DavServer(backend: newDavBackend(driver))
+proc newDavServer*(driver: StorageDriver,
+    users = initTable[string, string]()): DavServer =
+  DavServer(backend: newDavBackend(driver, users))
 
 proc serve*(srv: DavServer, req: HttpRequest, res: HttpResponse)
+
+proc servePrincipalsPropfind(srv: DavServer, req: HttpRequest,
+  res: HttpResponse, path, user: string)
 
 proc davHandler*(srv: DavServer): OnRequestCallback =
   ## Build the request callback. Capture-safe for powpow's single-loop use.
@@ -257,6 +271,8 @@ proc servePut(srv: DavServer, req: HttpRequest, res: HttpResponse) =
   except CatchableError:
     res.sendError(Http500, "Write failed")
     return
+  if b.isSyncCollection(parentOf(path)):
+    discard b.bumpSync(parentOf(path))
   res.status(if created: Http201 else: Http204).send("")
 
 proc serveDelete(srv: DavServer, req: HttpRequest, res: HttpResponse) =
@@ -271,15 +287,26 @@ proc serveDelete(srv: DavServer, req: HttpRequest, res: HttpResponse) =
   if b.lockedOut(path, req):
     res.sendError(Http423, "Locked")
     return
+  let wasCollection = b.isCollection(path)
+  let parent = parentOf(path)
+  let parentSynced = b.isSyncCollection(parent)
   try:
-    if b.isCollection(path):
+    if wasCollection:
       b.driver.deleteDir(toDriverPath(path), force = true)
     else:
       b.driver.delete(toDriverPath(path))
   except CatchableError:
     res.sendError(Http500, "Delete failed")
     return
+  # forgetDead drops dead props, markers and sync logs for the subtree.
   b.forgetDead(path)
+  # Only direct file members appear in depth-1 sync listings: a file
+  # delete leaves a tombstone, a collection delete (its nested files were
+  # never listed) just bumps the parent revision.
+  if parentSynced and not wasCollection:
+    discard b.recordSyncDelete(parent, path)
+  elif parentSynced and wasCollection:
+    discard b.bumpSync(parent)
   res.status(Http204).send("")
 
 proc serveMkcol(srv: DavServer, req: HttpRequest, res: HttpResponse) =
@@ -307,6 +334,8 @@ proc serveMkcol(srv: DavServer, req: HttpRequest, res: HttpResponse) =
     except CatchableError:
       res.sendError(Http500, "MKCOL failed")
       return
+    if b.isSyncCollection(parentOf(path)):
+      discard b.bumpSync(parentOf(path))
     res.status(Http201).send("")
     return
   var isAb = false
@@ -343,6 +372,8 @@ proc serveMkcol(srv: DavServer, req: HttpRequest, res: HttpResponse) =
       b.setDead(path, p.ns, p.name, "", p.xml)
     else:
       b.setDead(path, p.ns, p.name, p.value, "")
+  if b.isSyncCollection(parentOf(path)):
+    discard b.bumpSync(parentOf(path))
   res.status(Http201).send("")
 
 proc serveMkcalendar(srv: DavServer, req: HttpRequest, res: HttpResponse) =
@@ -386,6 +417,8 @@ proc serveMkcalendar(srv: DavServer, req: HttpRequest, res: HttpResponse) =
       b.setDead(path, p.ns, p.name, "", p.xml)
     else:
       b.setDead(path, p.ns, p.name, p.value, "")
+  if b.isSyncCollection(parentOf(path)):
+    discard b.bumpSync(parentOf(path))
   res.status(Http201).send("")
 
 proc hrefToPath(href: string): string =
@@ -478,6 +511,14 @@ proc cardPropstatsForSync(b: DavBackend, urlPath, content: string,
     addressDataPrefs: sync.addressDataPrefs, extraProps: sync.extraProps)
   b.cardPropstats(urlPath, content, rep)
 
+proc calPropstatsForSync(b: DavBackend, urlPath, content: string,
+    sync: SyncCollectionRequest): seq[DavPropstat] =
+  ## Same 200/404 groups as `calPropstats` but driven by a sync request.
+  var rep = CalReportRequest(kind: rkQuery,
+    wantEtag: sync.wantEtag, wantCalData: sync.wantCalData,
+    extraProps: sync.extraProps)
+  b.calPropstats(urlPath, content, rep)
+
 proc serveCardReport(srv: DavServer, req: HttpRequest, res: HttpResponse,
     path: string, rep: CardReportRequest) =
   ## CardDAV `addressbook-query` / `addressbook-multiget` (RFC 6352 §7-8).
@@ -561,14 +602,20 @@ proc serveCardReport(srv: DavServer, req: HttpRequest, res: HttpResponse,
 
 proc serveSyncCollection(srv: DavServer, req: HttpRequest, res: HttpResponse,
     path: string, sync: SyncCollectionRequest) =
-  ## RFC 6578 `sync-collection` over an addressbook. The sync token is the
-  ## addressbook ctag: a matching token answers with no member responses,
-  ## while a missing or stale token answers with the full member listing.
-  ## No delete tombstones are kept, so deletions surface as a full resync
-  ## (documented, not silent).
+  ## RFC 6578 `sync-collection` over a calendar or addressbook. The sync
+  ## token pairs the collection ctag with a revision (`ctag#rev`): a
+  ## matching token answers with no member responses, while a missing,
+  ## legacy (ctag-only) or unknown token answers with the full member
+  ## listing. A known stale token answers with the full listing plus `404`
+  ## tombstones for members deleted since that token. Tombstone history is
+  ## in-memory and capped (`MaxSyncDeletes`); overflow falls back to a
+  ## full resync without tombstones. `<limit>` caps total responses
+  ## (members first, then tombstones).
   let b = srv.backend
-  if not b.isAddressbookCollection(path):
-    res.sendError(Http403, "sync-collection needs an addressbook collection")
+  let isCal = b.isCalendarCollection(path)
+  let isAb = b.isAddressbookCollection(path)
+  if not isCal and not isAb:
+    res.sendError(Http403, "sync-collection needs a calendar or addressbook collection")
     return
   if sync.hasUnsupportedAddressData:
     res.sendError(Http415, "Unsupported address-data content-type")
@@ -580,13 +627,17 @@ proc serveSyncCollection(srv: DavServer, req: HttpRequest, res: HttpResponse,
     if depth != 1:
       res.sendError(Http400, "REPORT Depth must be 1")
       return
-  let current = b.addressbookCtag(path)
+  let ctag =
+    if isCal: b.calendarCtag(path)
+    else: b.addressbookCtag(path)
+  let current = b.makeSyncToken(path, ctag)
   if sync.hasToken and sync.token.len > 0 and sync.token == current:
     res.status(Http207)
       .header("Content-Type", "application/xml; charset=utf-8")
       .send(buildMultistatus(@[], current))
     return
   var responses: seq[DavResponse]
+  var members: seq[string]
   try:
     for m in b.driver.list(toDriverPath(path), recursive = false):
       if sync.hasLimit and responses.len >= sync.limit:
@@ -599,11 +650,35 @@ proc serveSyncCollection(srv: DavServer, req: HttpRequest, res: HttpResponse,
         content = b.driver.read(toDriverPath(cp))
       except CatchableError:
         continue
-      responses.add(DavResponse(href: cp,
-        propstats: b.cardPropstatsForSync(cp, content, sync)))
+      members.add(cp)
+      if isCal:
+        responses.add(DavResponse(href: cp,
+          propstats: b.calPropstatsForSync(cp, content, sync)))
+      else:
+        responses.add(DavResponse(href: cp,
+          propstats: b.cardPropstatsForSync(cp, content, sync)))
   except CatchableError:
     res.sendError(Http500, "REPORT failed")
     return
+  # Tombstones for known stale tokens: deletes since the presented
+  # revision, filtered to hrefs that do not exist again (recreates show
+  # as live members, not deletes).
+  if sync.hasToken and sync.token.len > 0:
+    let (tokCtag, tokRev, ok) = splitSyncToken(sync.token)
+    if ok and tokRev <= b.syncRevOf(path):
+      # Same ctag but same rev is steady (handled above); a ctag match
+      # with an older rev still carries deletes, so always consult the log.
+      let (hrefs, known) = b.syncDeletesSince(path, tokRev)
+      if known:
+        discard tokCtag
+        for h in hrefs:
+          if sync.hasLimit and responses.len >= sync.limit:
+            break
+          if h in members:
+            continue
+          responses.add(DavResponse(href: h,
+            propstats: @[DavPropstat(props: @[],
+              status: "HTTP/1.1 404 Not Found")]))
   res.status(Http207)
     .header("Content-Type", "application/xml; charset=utf-8")
     .send(buildMultistatus(responses, current))
@@ -611,7 +686,7 @@ proc serveSyncCollection(srv: DavServer, req: HttpRequest, res: HttpResponse,
 proc serveReport(srv: DavServer, req: HttpRequest, res: HttpResponse) =
   ## CalDAV `calendar-query` / `calendar-multiget` (RFC 4791 §7) plus
   ## CardDAV `addressbook-query` / `addressbook-multiget` (RFC 6352 §7-8)
-  ## and `sync-collection` (RFC 6578, addressbooks only).
+  ## and `sync-collection` (RFC 6578, calendars and addressbooks).
   ## Anything else REPORT-shaped answers `501`. Reports against a
   ## non-matching collection type answer `403`.
   let b = srv.backend
@@ -726,7 +801,7 @@ proc serveReport(srv: DavServer, req: HttpRequest, res: HttpResponse) =
     .send(buildMultistatus(responses))
 
 proc resourceResponses(b: DavBackend, urlPath: string, depth: int,
-    pf: PropfindRequest): seq[DavResponse] =
+    pf: PropfindRequest, currentUser = ""): seq[DavResponse] =
   ## Response list for PROPFIND: self plus direct children at depth >= 1.
   ## `depth == 2` (infinity) is capped to 1.
   var paths = @[urlPath]
@@ -735,7 +810,7 @@ proc resourceResponses(b: DavBackend, urlPath: string, depth: int,
     for m in b.driver.list(toDriverPath(urlPath), recursive = false):
       paths.add("/" & m.path)
   for p in paths:
-    let live = b.liveProps(p)
+    let live = b.liveProps(p, currentUser)
     let dead = b.deadPropsList(p)
     var propstats: seq[DavPropstat]
     case pf.kind
@@ -774,7 +849,8 @@ proc resourceResponses(b: DavBackend, urlPath: string, depth: int,
       else: p
     result.add(DavResponse(href: href, propstats: propstats))
 
-proc servePropfind(srv: DavServer, req: HttpRequest, res: HttpResponse) =
+proc servePropfind(srv: DavServer, req: HttpRequest, res: HttpResponse,
+    currentUser = "") =
   let b = srv.backend
   let path = normPath(req.getPath())
   if path.len == 0 or not b.exists(path):
@@ -798,7 +874,7 @@ proc servePropfind(srv: DavServer, req: HttpRequest, res: HttpResponse) =
       return
   var responses: seq[DavResponse]
   try:
-    responses = b.resourceResponses(path, depth, pf)
+    responses = b.resourceResponses(path, depth, pf, currentUser)
   except CatchableError:
     res.sendError(Http500, "PROPFIND failed")
     return
@@ -851,6 +927,11 @@ proc serveProppatch(srv: DavServer, req: HttpRequest, res: HttpResponse) =
   if missing.len > 0:
     propstats.add(DavPropstat(props: missing,
       status: "HTTP/1.1 404 Not Found"))
+  if ok.len > 0 and not b.isCollection(path) and
+      b.isSyncCollection(parentOf(path)):
+    # Dead-prop edits do not touch mtime, so the ctag alone would miss
+    # them; the revision bump makes sync notice member changes.
+    discard b.bumpSync(parentOf(path))
   res.status(Http207)
     .header("Content-Type", "application/xml; charset=utf-8")
     .send(buildMultistatus(@[DavResponse(href: path, propstats: propstats)]))
@@ -947,6 +1028,22 @@ proc serveCopyMove(srv: DavServer, req: HttpRequest, res: HttpResponse,
     b.moveDead(src, dest, destExisted)
   else:
     b.copyDead(src, dest, destExisted)
+  # Sync revision accounting: destination parents gain a member (bump),
+  # MOVE sources lose one (tombstone for files, bump for collections).
+  # Nested files inside moved/copied collections never appeared in the
+  # source parent's depth-1 listing, so only direct entries matter here.
+  let destParent = parentOf(dest)
+  let srcParent = parentOf(src)
+  if not srcIsDir:
+    if b.isSyncCollection(destParent):
+      discard b.bumpSync(destParent)
+    if isMove and b.isSyncCollection(srcParent):
+      discard b.recordSyncDelete(srcParent, src)
+  else:
+    if b.isSyncCollection(destParent):
+      discard b.bumpSync(destParent)
+    if isMove and b.isSyncCollection(srcParent):
+      discard b.bumpSync(srcParent)
   res.status(if destExisted: Http204 else: Http201).send("")
 
 proc lockPropBody(lock: DavLock, href: string): string =
@@ -1057,8 +1154,137 @@ proc serveUnlock(srv: DavServer, req: HttpRequest, res: HttpResponse) =
       return
   res.sendError(Http409, "Lock token does not match")
 
+proc serveUnauthorized(res: HttpResponse) =
+  ## `401` with the Basic challenge. Used whenever auth is enabled and the
+  ## request carries missing or wrong credentials.
+  res.status(Http401)
+    .header("WWW-Authenticate", challengeHeader())
+    .send("Unauthorized")
+
+proc checkAuth(srv: DavServer, req: HttpRequest): string =
+  ## Authenticated username, or "" when auth is disabled (open server).
+  ## Raises `DavAuthError` when auth is enabled and the credentials are
+  ## missing, malformed or wrong.
+  if srv.backend.users.len == 0:
+    return ""
+  let creds = parseBasic(reqHeader(req, "Authorization"))
+  if not verifyUser(srv.backend.users, creds.user, creds.pass):
+    raise newException(DavAuthError, "bad credentials")
+  creds.user
+
+proc principalLiveProps(b: DavBackend, path, currentUser: string): seq[DavProp] =
+  ## Live properties for the virtual principals collection (`/principals/`)
+  ## and principal resources (`/principals/<name>`). Home sets point at `/`
+  ## (root-as-home: existing root-level calendars and addressbooks keep
+  ## working under auth).
+  if isPrincipalsCollection(path):
+    result.add(DavProp(ns: DavNs, name: "resourcetype",
+      xml: """<D:collection xmlns:D="DAV:"/>"""))
+    result.add(DavProp(ns: DavNs, name: "displayname", value: "principals"))
+  else:
+    let name = principalUserName(path)
+    result.add(DavProp(ns: DavNs, name: "resourcetype",
+      xml: """<D:principal xmlns:D="DAV:"/>"""))
+    result.add(DavProp(ns: DavNs, name: "displayname", value: name))
+    result.add(DavProp(ns: DavNs, name: "principal-URL",
+      xml: hrefXml(principalHref(name))))
+    result.add(DavProp(ns: CalNs, name: "calendar-home-set",
+      xml: hrefXml("/")))
+    result.add(DavProp(ns: CardNs, name: "addressbook-home-set",
+      xml: hrefXml("/")))
+  if currentUser.len > 0:
+    result.add(DavProp(ns: DavNs, name: "current-user-principal",
+      xml: hrefXml(principalHref(currentUser))))
+    result.add(DavProp(ns: DavNs, name: "principal-collection-set",
+      xml: hrefXml(PrincipalsRoot & "/")))
+
+proc servePrincipalsPropfind(srv: DavServer, req: HttpRequest,
+    res: HttpResponse, path, user: string) =
+  ## PROPFIND over the virtual principals tree (no driver storage).
+  let b = srv.backend
+  if not b.isPrincipalPath(path):
+    res.sendError(Http404, "Not Found")
+    return
+  let rawDepth = reqHeader(req, "Depth")
+  var depth: int
+  if rawDepth.len == 0:
+    depth = if isPrincipalsCollection(path): 2 else: 0
+  else:
+    depth = parseDepthHeader(rawDepth)
+    if depth < 0:
+      res.sendError(Http400, "Invalid Depth header")
+      return
+  var pf = PropfindRequest(kind: pfAllprop)
+  if req.getBodyString().len > 0:
+    try:
+      pf = parsePropfind(req.getBodyString())
+    except DavXmlError as e:
+      res.sendError(Http422, e.msg)
+      return
+  var paths = @[path]
+  if depth >= 1 and isPrincipalsCollection(path):
+    for name in sorted(toSeq(b.users.keys)):
+      paths.add(principalHref(name))
+  var responses: seq[DavResponse]
+  for p in paths:
+    let live = b.principalLiveProps(p, user)
+    var propstats: seq[DavPropstat]
+    case pf.kind
+    of pfAllprop:
+      propstats.add(DavPropstat(props: live, status: "HTTP/1.1 200 OK"))
+    of pfPropname:
+      var names: seq[DavProp]
+      for pr in live:
+        names.add(DavProp(ns: pr.ns, name: pr.name))
+      propstats.add(DavPropstat(props: names, status: "HTTP/1.1 200 OK"))
+    of pfProp:
+      var ok, missing: seq[DavProp]
+      for name in pf.props:
+        var found = false
+        for pr in live:
+          if pr.name == name:
+            ok.add(pr)
+            found = true
+            break
+        if not found:
+          missing.add(DavProp(ns: DavNs, name: name))
+      if ok.len > 0:
+        propstats.add(DavPropstat(props: ok, status: "HTTP/1.1 200 OK"))
+      if missing.len > 0:
+        propstats.add(DavPropstat(props: missing,
+          status: "HTTP/1.1 404 Not Found"))
+    responses.add(DavResponse(
+      href: (if isPrincipalsCollection(p): collHref(p) else: p),
+      propstats: propstats))
+  res.status(Http207)
+    .header("Content-Type", "application/xml; charset=utf-8")
+    .send(buildMultistatus(responses))
+
 proc serve*(srv: DavServer, req: HttpRequest, res: HttpResponse) =
+  var user = ""
+  if srv.backend.users.len > 0:
+    try:
+      user = srv.checkAuth(req)
+    except DavAuthError:
+      serveUnauthorized(res)
+      return
   let meth = req.getMethod()
+  let path = normPath(req.getPath())
+  if path.len > 0 and isPrincipalsSubtree(path):
+    # Virtual principals tree: read-only, served from the users table.
+    case meth
+    of HttpPropfind:
+      srv.servePrincipalsPropfind(req, res, path, user)
+    of HttpOptions:
+      srv.serveOptions(req, res)
+    of HttpGet, HttpHead:
+      if isPrincipalsCollection(path):
+        res.sendError(Http403, "GET on collections is not supported")
+      else:
+        res.sendError(Http404, "Not Found")
+    else:
+      res.sendError(Http403, "Principal resources are read-only")
+    return
   case meth
   of HttpOptions:
     srv.serveOptions(req, res)
@@ -1077,7 +1303,7 @@ proc serve*(srv: DavServer, req: HttpRequest, res: HttpResponse) =
   of HttpReport:
     srv.serveReport(req, res)
   of HttpPropfind:
-    srv.servePropfind(req, res)
+    srv.servePropfind(req, res, user)
   of HttpProppatch:
     srv.serveProppatch(req, res)
   of HttpCopy:
