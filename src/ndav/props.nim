@@ -109,8 +109,9 @@ proc hrefXml*(href: string): string {.inline.} =
 
 proc liveProps*(b: DavBackend, urlPath: string, currentUser = ""): seq[DavProp] =
   ## All live properties for a resource. `currentUser` is the authenticated
-  ## name ("", when auth is disabled); a non-empty value adds the RFC 5397
-  ## identity props (`current-user-principal`, `principal-collection-set`).
+  ## name ("", when auth is disabled); a non-empty value adds the RFC 3744
+  ## identity props (`current-user-principal`, `principal-collection-set`,
+  ## `principal-URL`) plus the CalDAV/CardDAV home sets (root-as-home).
   let meta = b.driver.metadata(toDriverPath(urlPath))
   let isDir = meta.isDir
   let isCal = isDir and b.isCalendarCollection(urlPath)
@@ -190,6 +191,12 @@ proc liveProps*(b: DavBackend, urlPath: string, currentUser = ""): seq[DavProp] 
       xml: hrefXml(principalHref(currentUser))))
     result.add(DavProp(ns: DavNs, name: "principal-collection-set",
       xml: hrefXml(PrincipalsRoot & "/")))
+    result.add(DavProp(ns: DavNs, name: "principal-URL",
+      xml: hrefXml(principalHref(currentUser))))
+    result.add(DavProp(ns: CalNs, name: "calendar-home-set",
+      xml: hrefXml("/")))
+    result.add(DavProp(ns: CardNs, name: "addressbook-home-set",
+      xml: hrefXml("/")))
 
 proc deadPropsList*(b: DavBackend, urlPath: string): seq[DavProp] =
   for k, v in b.getDead(urlPath):

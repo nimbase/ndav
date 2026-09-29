@@ -28,9 +28,17 @@
 #
 # Auth (see `auth.nim`): HTTP Basic (RFC 7617) with Argon2id hashes from the
 # `[users]` config table. Empty users means an open server; otherwise every
-# request needs valid credentials (`401` + `WWW-Authenticate`). Principals
+# request needs valid credentials (`401` + `WWW-Authenticate`), except the
+# auth-exempt RFC 6764 `/.well-known` discovery redirects below. Principals
 # live under virtual `/principals/` (no driver storage); any authenticated
 # user has full access (no per-resource ACLs yet).
+#
+# Discovery (RFC 6764 §6): `GET`/`HEAD`/`PROPFIND` on
+# `/.well-known/caldav` and `/.well-known/carddav` answer `307` with
+# `Location: /` (root-as-home), without requiring credentials.
+# Principal search (RFC 3744 §9.4): REPORT `principal-property-search`
+# over `/principals/` (principal collection set scope only,
+# case-insensitive substring on `displayname` / `principal-URL`).
 
 import ./davmethod # stage verb extensions before powpow compiles
 export davmethod
@@ -64,6 +72,9 @@ proc newDavServer*(driver: StorageDriver,
 proc serve*(srv: DavServer, req: HttpRequest, res: HttpResponse)
 
 proc servePrincipalsPropfind(srv: DavServer, req: HttpRequest,
+  res: HttpResponse, path, user: string)
+
+proc servePrincipalPropertySearch(srv: DavServer, req: HttpRequest,
   res: HttpResponse, path, user: string)
 
 proc davHandler*(srv: DavServer): OnRequestCallback =
@@ -107,6 +118,14 @@ proc parentOf(urlPath: string): string =
 proc collHref(urlPath: string): string {.inline.} =
   ## Collection hrefs end with `/` per RFC 4918 (root already does).
   if urlPath.endsWith("/"): urlPath else: urlPath & "/"
+
+const
+  WellKnownCaldav = "/.well-known/caldav"
+  WellKnownCarddav = "/.well-known/carddav"
+
+proc isWellKnownDiscovery(urlPath: string): bool {.inline.} =
+  ## True for RFC 6764 service-discovery paths, redirected to `/`.
+  urlPath == WellKnownCaldav or urlPath == WellKnownCarddav
 
 proc parseDepthHeader(s: string): int =
   ## 0, 1, 2 (= infinity), or -1 when invalid.
@@ -831,9 +850,12 @@ proc resourceResponses(b: DavBackend, urlPath: string, depth: int,
         if li >= 0:
           ok.add(live[li])
           continue
+        # Namespace-lenient fallback (like the principals tree): CalDAV /
+        # CardDAV live props and dead props under any namespace resolve
+        # by local name so explicit cross-namespace queries stop 404ing.
         var found = false
-        for pr in dead:
-          if pr.ns == DavNs and pr.name == name:
+        for pr in live & dead:
+          if pr.name == name:
             ok.add(pr)
             found = true
             break
@@ -1181,6 +1203,15 @@ proc principalLiveProps(b: DavBackend, path, currentUser: string): seq[DavProp] 
     result.add(DavProp(ns: DavNs, name: "resourcetype",
       xml: """<D:collection xmlns:D="DAV:"/>"""))
     result.add(DavProp(ns: DavNs, name: "displayname", value: "principals"))
+    result.add(DavProp(ns: DavNs, name: "principal-search-property-set",
+      xml: """<D:principal-search-property-set xmlns:D="DAV:">""" &
+      """<D:prop><D:displayname /></D:prop>""" &
+      """<D:prop><D:principal-URL /></D:prop>""" &
+      """</D:principal-search-property-set>"""))
+    result.add(DavProp(ns: DavNs, name: "supported-report-set",
+      xml: """<D:supported-report xmlns:D="DAV:">""" &
+      """<D:report><D:principal-property-search /></D:report>""" &
+      """</D:supported-report>"""))
   else:
     let name = principalUserName(path)
     result.add(DavProp(ns: DavNs, name: "resourcetype",
@@ -1197,6 +1228,84 @@ proc principalLiveProps(b: DavBackend, path, currentUser: string): seq[DavProp] 
       xml: hrefXml(principalHref(currentUser))))
     result.add(DavProp(ns: DavNs, name: "principal-collection-set",
       xml: hrefXml(PrincipalsRoot & "/")))
+
+proc principalResponses(b: DavBackend, paths: seq[string],
+    pf: PropfindRequest, user: string): seq[DavResponse] =
+  ## 207 response list over principal paths honoring a prop selector
+  ## (shared by PROPFIND and `principal-property-search`).
+  for p in paths:
+    let live = b.principalLiveProps(p, user)
+    var propstats: seq[DavPropstat]
+    case pf.kind
+    of pfAllprop:
+      propstats.add(DavPropstat(props: live, status: "HTTP/1.1 200 OK"))
+    of pfPropname:
+      var names: seq[DavProp]
+      for pr in live:
+        names.add(DavProp(ns: pr.ns, name: pr.name))
+      propstats.add(DavPropstat(props: names, status: "HTTP/1.1 200 OK"))
+    of pfProp:
+      var ok, missing: seq[DavProp]
+      for name in pf.props:
+        var found = false
+        for pr in live:
+          if pr.name == name:
+            ok.add(pr)
+            found = true
+            break
+        if not found:
+          missing.add(DavProp(ns: DavNs, name: name))
+      if ok.len > 0:
+        propstats.add(DavPropstat(props: ok, status: "HTTP/1.1 200 OK"))
+      if missing.len > 0:
+        propstats.add(DavPropstat(props: missing,
+          status: "HTTP/1.1 404 Not Found"))
+    result.add(DavResponse(
+      href: (if isPrincipalsCollection(p): collHref(p) else: p),
+      propstats: propstats))
+
+proc servePrincipalPropertySearch(srv: DavServer, req: HttpRequest,
+    res: HttpResponse, path, user: string) =
+  ## RFC 3744 §9.4 REPORT over the virtual principals tree. Only the
+  ## principal collection itself is searchable and only the principal
+  ## collection set scope is supported; anything else answers `403`
+  ## (unknown paths `404`). Matching is a case-insensitive substring
+  ## against `displayname` / `principal-URL` over the users table.
+  let b = srv.backend
+  if not isPrincipalsCollection(path):
+    if b.isPrincipalResource(path):
+      res.sendError(Http403, "Principal resources are read-only")
+    else:
+      res.sendError(Http404, "Not Found")
+    return
+  var pps: PrincipalPropertySearchRequest
+  try:
+    pps = parsePrincipalPropertySearch(req.getBodyString())
+  except DavXmlError as e:
+    res.sendError(Http422, e.msg)
+    return
+  if pps.scope != "apply-to-principal-collection-set":
+    res.sendError(Http403, "unsupported search scope")
+    return
+  var paths: seq[string]
+  for name in sorted(toSeq(b.users.keys)):
+    var hits: seq[bool]
+    for s in pps.searches:
+      let hay = case s.propName
+        of "displayname": name
+        of "principal-URL": principalHref(name)
+        else: ""
+      hits.add(s.matchText.toLowerAscii() in hay.toLowerAscii())
+    let matched =
+      if pps.testAnyOf: hits.contains(true)
+      else: not hits.contains(false)
+    if matched:
+      paths.add(principalHref(name))
+  let pf = if pps.wanted.len == 0: PropfindRequest(kind: pfAllprop)
+           else: PropfindRequest(kind: pfProp, props: pps.wanted)
+  res.status(Http207)
+    .header("Content-Type", "application/xml; charset=utf-8")
+    .send(buildMultistatus(b.principalResponses(paths, pf, user)))
 
 proc servePrincipalsPropfind(srv: DavServer, req: HttpRequest,
     res: HttpResponse, path, user: string) =
@@ -1225,42 +1334,26 @@ proc servePrincipalsPropfind(srv: DavServer, req: HttpRequest,
   if depth >= 1 and isPrincipalsCollection(path):
     for name in sorted(toSeq(b.users.keys)):
       paths.add(principalHref(name))
-  var responses: seq[DavResponse]
-  for p in paths:
-    let live = b.principalLiveProps(p, user)
-    var propstats: seq[DavPropstat]
-    case pf.kind
-    of pfAllprop:
-      propstats.add(DavPropstat(props: live, status: "HTTP/1.1 200 OK"))
-    of pfPropname:
-      var names: seq[DavProp]
-      for pr in live:
-        names.add(DavProp(ns: pr.ns, name: pr.name))
-      propstats.add(DavPropstat(props: names, status: "HTTP/1.1 200 OK"))
-    of pfProp:
-      var ok, missing: seq[DavProp]
-      for name in pf.props:
-        var found = false
-        for pr in live:
-          if pr.name == name:
-            ok.add(pr)
-            found = true
-            break
-        if not found:
-          missing.add(DavProp(ns: DavNs, name: name))
-      if ok.len > 0:
-        propstats.add(DavPropstat(props: ok, status: "HTTP/1.1 200 OK"))
-      if missing.len > 0:
-        propstats.add(DavPropstat(props: missing,
-          status: "HTTP/1.1 404 Not Found"))
-    responses.add(DavResponse(
-      href: (if isPrincipalsCollection(p): collHref(p) else: p),
-      propstats: propstats))
   res.status(Http207)
     .header("Content-Type", "application/xml; charset=utf-8")
-    .send(buildMultistatus(responses))
+    .send(buildMultistatus(b.principalResponses(paths, pf, user)))
 
 proc serve*(srv: DavServer, req: HttpRequest, res: HttpResponse) =
+  let meth = req.getMethod()
+  let path = normPath(req.getPath())
+  if path.len > 0 and isWellKnownDiscovery(path):
+    # RFC 6764 §6 discovery, auth-exempt: the redirect leaks nothing and
+    # lets clients bootstrap before authenticating. 307 (not 301) so
+    # PROPFIND probes keep their method when replaying against `/`.
+    case meth
+    of HttpGet, HttpHead, HttpPropfind:
+      res.status(Http307)
+        .header("Location", "/")
+        .send("Redirect")
+      return
+    else:
+      discard
+    # Other methods fall through to normal dispatch (driver 404).
   var user = ""
   if srv.backend.users.len > 0:
     try:
@@ -1268,8 +1361,6 @@ proc serve*(srv: DavServer, req: HttpRequest, res: HttpResponse) =
     except DavAuthError:
       serveUnauthorized(res)
       return
-  let meth = req.getMethod()
-  let path = normPath(req.getPath())
   if path.len > 0 and isPrincipalsSubtree(path):
     # Virtual principals tree: read-only, served from the users table.
     case meth
@@ -1282,6 +1373,21 @@ proc serve*(srv: DavServer, req: HttpRequest, res: HttpResponse) =
         res.sendError(Http403, "GET on collections is not supported")
       else:
         res.sendError(Http404, "Not Found")
+    of HttpReport:
+      # Only `principal-property-search` (RFC 3744 §9.4) is served here;
+      # anything else stays read-only `403`. Peek at the root element so
+      # other REPORTs (e.g. `sync-collection`) keep their 403.
+      var isSearch = false
+      try:
+        let peek = parseDavXml(req.getBodyString())
+        isSearch = peek.localNameOf() == "principal-property-search" and
+          peek.hasDavNs()
+      except DavXmlError:
+        discard
+      if isSearch:
+        srv.servePrincipalPropertySearch(req, res, path, user)
+      else:
+        res.sendError(Http403, "Principal resources are read-only")
     else:
       res.sendError(Http403, "Principal resources are read-only")
     return

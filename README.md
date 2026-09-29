@@ -156,7 +156,7 @@ No `[users]` table means an open server. Add users to require HTTP Basic
 on every request (passwords are stored as Argon2id hashes via nimcypher):
 
 ```sh
-webdav passwd alice --config=./webdav.config.toml
+ndav passwd alice --config=./webdav.config.toml
 # Password: … / Confirm: …
 ```
 
@@ -187,6 +187,39 @@ dav.put("/hello.txt", "hi").ensure(Http201)
 dav.clearAuth()
 ```
 
+### Discovery
+
+Clients bootstrap without credentials via RFC 6764 redirects (exempt from
+the `401` gate; the redirect itself leaks nothing):
+
+```sh
+curl -i http://localhost:9001/.well-known/caldav
+# → 307 with `Location: /`
+curl -i http://localhost:9001/.well-known/carddav
+# → 307 with `Location: /`
+```
+
+Follow the redirect, authenticate, then ask `/` for the home sets or
+search `/principals/` (RFC 3744 §9.4, principal collection set scope;
+case-insensitive substring on `displayname` / `principal-URL`):
+
+```sh
+curl -u alice:s3cret -X PROPFIND http://localhost:9001/ -H 'Depth: 0' \
+  -d '<D:propfind xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav"><D:prop><C:calendar-home-set/></D:prop></D:propfind>' -i
+# → 207 with `<C:href>/</C:href>`
+```
+
+```nim
+let dav = newDavClient("http://localhost:9001")
+dav.setAuth("alice", "s3cret")
+let who = dav.report("/principals",
+  buildPrincipalPropertySearch(@["displayname"], @[("displayname", "ali")]),
+  ).multistatus()
+for r in who:
+  echo r.href # /principals/alice
+dav.clearAuth()
+```
+
 ## Modules
 
 | Module | Job |
@@ -208,7 +241,7 @@ dav.clearAuth()
 
 Run `clue test` or `nimble test`.
 
-440+ checks total across unit suites and loopback servers (in-memory backend
+490+ checks total across unit suites and loopback servers (in-memory backend
 plus live curl runs against the disk-backed example).
 
 ## Known limits
@@ -239,9 +272,9 @@ plus live curl runs against the disk-backed example).
 - [x] CardDAV (requires `openparser >= 0.3.3` for vCard support)
 - [x] CalDAV `sync-collection` REPORT parity with CardDAV
 - [x] Sync delete tombstones (404 entries instead of full resync)
-- [ ] Discovery + principals (`/.well-known`, `current-user-principal`, `*-home-set`, `principal-property-search`)
-- [ ] CalDAV scheduling and `free-busy-query` REPORTs
 - [x] Auth + principal collections (`calendar-home-set`, `current-user-principal`)
+- [x] Discovery + principals (`/.well-known` redirects, `*-home-set` on `/`, `principal-property-search`; no ACLs)
+- [ ] CalDAV scheduling and `free-busy-query` REPORTs
 - [ ] Full `Depth: infinity` and atomic `PROPPATCH`
 - [ ] Collection listing view for `GET`
 - [ ] Interop pass against real clients (Thunderbird, DAVx⁵, macOS)

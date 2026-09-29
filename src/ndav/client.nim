@@ -223,12 +223,44 @@ proc buildAddressbookQuery*(filters: seq[string] = @["FN"],
           pf.addChild(tm)
         filter.addChild(pf)
       root.addChild(filter)
-    if limit >= 0:
-      let lim = newCardElement("limit")
-      let nr = newCardElement("nresults")
-      nr.addChild(newXmlText($limit))
-      lim.addChild(nr)
-      root.addChild(lim)
+  if limit >= 0:
+    let lim = newDavElement("limit")
+    let nr = newDavElement("nresults")
+    nr.addChild(newXmlText($limit))
+    lim.addChild(nr)
+    root.addChild(lim)
+  davDoc(root)
+
+proc buildPrincipalPropertySearch*(wanted: seq[string] = @[],
+    searches: seq[(string, string)] = @[("displayname", "")],
+    testAnyOf = true): string =
+  ## RFC 3744 §9.4 `principal-property-search` REPORT body. `wanted` lists
+  ## response prop local names (empty = all live props); each search entry
+  ## is a (property, match-text) pair over `displayname` / `principal-URL`,
+  ## matched case-insensitively as a substring. Raises `DavClientError`
+  ## when no search clause is given.
+  if searches.len == 0:
+    raise newException(DavClientError,
+      "principal-property-search needs a search")
+  let root = newDavElement("principal-property-search")
+  root.addAttr("xmlns:D", DavNs)
+  if testAnyOf:
+    root.addAttr("test", "anyof")
+  let prop = newDavElement("prop")
+  for n in wanted:
+    prop.addChild(newDavElement(n))
+  root.addChild(prop)
+  root.addChild(newDavElement("apply-to-principal-collection-set"))
+  for (pname, text) in searches:
+    let ps = newDavElement("property-search")
+    let sp = newDavElement("prop")
+    sp.addChild(newDavElement(pname))
+    ps.addChild(sp)
+    let m = newDavElement("match")
+    if text.len > 0:
+      m.addChild(newXmlText(text))
+    ps.addChild(m)
+    root.addChild(ps)
   davDoc(root)
 
 proc buildAddressbookMultiget*(hrefs: seq[string], wantEtag = true,

@@ -54,6 +54,19 @@ type
     locktype*: string ## Always `write` per RFC 4918.
     owner*: string
 
+  PrincipalPropertySearch* = object
+    ## One `<property-search>` clause of a `principal-property-search`
+    ## REPORT (RFC 3744 §9.4): match `matchText` against `propName`.
+    propName*: string ## Local name: `displayname` or `principal-URL`.
+    matchText*: string
+
+  PrincipalPropertySearchRequest* = object
+    wanted*: seq[string] ## Local names from the `<prop>` selector.
+      ## Empty means all live props (like allprop).
+    scope*: string ## Local name of the `apply-to-*` scope element.
+    testAnyOf*: bool ## `test="anyof"` on the root; default is allof.
+    searches*: seq[PrincipalPropertySearch]
+
   DavProp* = object
     ns*: string    ## Namespace URI, usually `DavNs`.
     name*: string  ## Local name.
@@ -224,6 +237,64 @@ proc parseLockinfo*(body: string): LockinfoRequest =
   if locktype != nil and locktype.findChild("write") == nil:
     raise newException(DavXmlError, "only write locks are supported")
   result.owner = root.childText("owner")
+
+proc attrValue(node: XmlNode, name: string): string =
+  ## Attribute value of an element node matched by local name, or "".
+  if node == nil or node.kind != xnElement:
+    return ""
+  for k, v in node.attrs:
+    if localName(k) == name:
+      return v
+  ""
+
+proc parsePrincipalPropertySearch*(body: string): PrincipalPropertySearchRequest =
+  ## Parse an RFC 3744 §9.4 `<principal-property-search>` REPORT body.
+  ## Only the `apply-to-principal-collection-set` scope is recorded; the
+  ## server answers any other scope with `403`. Searchable properties are
+  ## `displayname` and `principal-URL`. Raises `DavXmlError` on any failure.
+  if body.strip().len == 0:
+    raise newException(DavXmlError, "empty REPORT body")
+  let root = parseDavXml(body).requireDavRoot("principal-property-search")
+  let t = attrValue(root, "test").strip().toLowerAscii()
+  if t.len > 0 and t != "anyof" and t != "allof":
+    raise newException(DavXmlError,
+      "principal-property-search test must be anyof or allof")
+  result.testAnyOf = t == "anyof"
+  let prop = root.findChild("prop")
+  if prop != nil:
+    for c in prop.elementChildren():
+      result.wanted.add(localName(c.tag))
+  for c in root.elementChildren():
+    if localName(c.tag).startsWith("apply-to-"):
+      result.scope = localName(c.tag)
+      break
+  if result.scope.len == 0:
+    raise newException(DavXmlError,
+      "principal-property-search needs an apply-to scope")
+  for ps in root.childrenByLocal("property-search"):
+    let sp = ps.findChild("prop")
+    if sp == nil:
+      raise newException(DavXmlError, "property-search needs a prop child")
+    let names = sp.elementChildren()
+    if names.len != 1:
+      raise newException(DavXmlError,
+        "property-search prop needs exactly one property")
+    let pname = localName(names[0].tag)
+    if pname != "displayname" and pname != "principal-URL":
+      raise newException(DavXmlError,
+        "unsupported search property: <" & pname & ">")
+    let m = ps.findChild("match")
+    if m == nil:
+      raise newException(DavXmlError, "property-search needs a match child")
+    var text = ""
+    for c in m.children:
+      if c.kind == xnText:
+        text.add(c.text)
+    result.searches.add(PrincipalPropertySearch(propName: pname,
+      matchText: text.strip()))
+  if result.searches.len == 0:
+    raise newException(DavXmlError,
+      "principal-property-search needs a property-search")
 
 proc newDavElement*(local: string): XmlNode =
   ## `<D:local>` element builder; output always uses the `D:` prefix.
