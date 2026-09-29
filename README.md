@@ -20,10 +20,10 @@
 - Quick downloads through zero-copy file serving
 - [Flysystem](https://github.com/openpeeps/flysystem) sandboxed storage to its
   own folder, crash-safe writes,<br>and ready for new backends such as cloud disks
-- Calendars and contacts parsed with OpenParser's **iCalendar** and **vCard** formats
+- Calendars and contacts parsed with [openparser's](https://github.com/openpeeps/openparser) **iCalendar** and **vCard** formats
 - Runs on Linux, macOS and Windows (should)
 - Use it as a library (build on top of nDAV) or as a CLI binary
-- Optional HTTP Basic auth with Argon2id password hashes (`webdav passwd`)
+- Optional HTTP Basic auth with Argon2id password hashes using [nimcypher](https://github.com/nimbase/nimcypher)
 
 **File sharing**
 
@@ -206,17 +206,7 @@ dav.clearAuth()
 
 ## Tests
 
-```sh
-clue build tests/t_davmethod.nim  --out:/tmp/t_davmethod  && /tmp/t_davmethod
-clue build tests/t_davxml.nim     --out:/tmp/t_davxml     && /tmp/t_davxml
-clue build tests/t_locks.nim      --out:/tmp/t_locks      && /tmp/t_locks
-clue build tests/t_server_mem.nim --out:/tmp/t_server_mem && /tmp/t_server_mem
-clue build tests/t_caldav.nim     --out:/tmp/t_caldav     && /tmp/t_caldav
-clue build tests/t_carddav.nim    --out:/tmp/t_carddav    && /tmp/t_carddav
-clue build tests/t_client.nim     --out:/tmp/t_client     && /tmp/t_client
-clue build tests/t_cli.nim        --out:/tmp/t_cli        && /tmp/t_cli
-clue build tests/t_auth.nim       --out:/tmp/t_auth       && /tmp/t_auth
-```
+Run `clue test` or `nimble test`.
 
 440+ checks total across unit suites and loopback servers (in-memory backend
 plus live curl runs against the disk-backed example).
@@ -231,9 +221,9 @@ plus live curl runs against the disk-backed example).
   interactive profile (1 MiB, 3 passes)
 - `GET` on a collection answers `403` (no HTML listing view)
 - Recurrence and timezone handling follow the documented subset in
-  `src/webdav/caldav.nim` (clamped month overflow, UTC-normalized times)
+  `src/ndav/caldav.nim` (clamped month overflow, UTC-normalized times)
 - CardDAV handling follows the documented subset in
-  `src/webdav/carddav.nim` (UID presence not required but unique when present,
+  `src/ndav/carddav.nim` (UID presence not required but unique when present,
   unknown `address-data` versions fall back to stored bytes,
   `sync-collection` keeps capped in-memory delete tombstones so known stale
   tokens surface deletions as `404` entries while unknown tokens fall back
@@ -257,8 +247,8 @@ plus live curl runs against the disk-backed example).
 - [ ] Interop pass against real clients (Thunderbird, DAVx⁵, macOS)
 
 ### ❤ Contributions & Support
-- 🐛 Found a bug? [Create a new Issue](https://github.com/nimbase/webdav/issues)
-- 👋 Wanna help? [Fork it!](https://github.com/nimbase/webdav/fork)
+- 🐛 Found a bug? [Create a new Issue](https://github.com/nimbase/ndav/issues)
+- 👋 Wanna help? [Fork it!](https://github.com/nimbase/ndav/fork)
 
 ### 🎩 License
 MIT license | Nim Community.
