@@ -1,0 +1,6 @@
+nimTitle	types	ndav/types.html	module ndav/types		0
+nim	DepthZero	ndav/types.html#DepthZero	DavDepth.DepthZero		6
+nim	DepthOne	ndav/types.html#DepthOne	DavDepth.DepthOne		6
+nim	DepthInfinity	ndav/types.html#DepthInfinity	DavDepth.DepthInfinity		6
+nim	DavDepth	ndav/types.html#DavDepth	enum DavDepth		6
+nim	parseDepth	ndav/types.html#parseDepth,string,DavDepth	proc parseDepth(s: string; default: DavDepth): DavDepth		12

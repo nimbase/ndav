@@ -1,0 +1,15 @@
+nimTitle	props	ndav/props.html	module ndav/props		0
+nim	ProtectedLiveProps	ndav/props.html#ProtectedLiveProps	const ProtectedLiveProps		13
+nim	SupportedLockXml	ndav/props.html#SupportedLockXml	const SupportedLockXml		23
+nim	isProtectedLive	ndav/props.html#isProtectedLive,string	proc isProtectedLive(name: string): bool		29
+nim	httpDate	ndav/props.html#httpDate,Time	proc httpDate(t: Time): string		32
+nim	isoDate	ndav/props.html#isoDate,Time	proc isoDate(t: Time): string		35
+nim	davEtag	ndav/props.html#davEtag,int64,Time	proc davEtag(size: int64; mtime: Time): string		38
+nim	displayName	ndav/props.html#displayName,string	proc displayName(urlPath: string): string		41
+nim	addressbookCtag	ndav/props.html#addressbookCtag,DavBackend,string	proc addressbookCtag(b: DavBackend; urlPath: string): string		48
+nim	calendarCtag	ndav/props.html#calendarCtag,DavBackend,string	proc calendarCtag(b: DavBackend; urlPath: string): string		71
+nim	davMimeType	ndav/props.html#davMimeType,DavBackend,string	proc davMimeType(b: DavBackend; urlPath: string): string		96
+nim	hrefXml	ndav/props.html#hrefXml,string	proc hrefXml(href: string): string		106
+nim	liveProps	ndav/props.html#liveProps,DavBackend,string,string	proc liveProps(b: DavBackend; urlPath: string; currentUser = ""): seq[DavProp]		110
+nim	deadPropsList	ndav/props.html#deadPropsList,DavBackend,string	proc deadPropsList(b: DavBackend; urlPath: string): seq[DavProp]		194
+nim	findLive	ndav/props.html#findLive,seq[DavProp],string	proc findLive(props: seq[DavProp]; name: string): int		203

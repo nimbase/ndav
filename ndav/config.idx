@@ -1,0 +1,11 @@
+nimTitle	config	ndav/config.html	module ndav/config		0
+nim	DavConfig	ndav/config.html#DavConfig	object DavConfig		14
+nim	DavFlags	ndav/config.html#DavFlags	object DavFlags		28
+nim	defaultConfigName	ndav/config.html#defaultConfigName	const defaultConfigName		35
+nim	defaultDavConfig	ndav/config.html#defaultDavConfig	proc defaultDavConfig(): DavConfig		38
+nim	defaultConfigToml	ndav/config.html#defaultConfigToml	proc defaultConfigToml(): string		42
+nim	initConfigFile	ndav/config.html#initConfigFile	proc initConfigFile(path = defaultConfigName; force = false)		52
+nim	autoConfigPath	ndav/config.html#autoConfigPath	proc autoConfigPath(): string		59
+nim	loadConfig	ndav/config.html#loadConfig,string	proc loadConfig(path: string): DavConfig		81
+nim	resolveConfig	ndav/config.html#resolveConfig,DavFlags	proc resolveConfig(flags: DavFlags): DavConfig		107
+nim	setUserHash	ndav/config.html#setUserHash,string,string,string	proc setUserHash(path, name, pwhash: string)		120

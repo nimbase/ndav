@@ -1,0 +1,21 @@
+nimTitle	caldav	ndav/caldav.html	module ndav/caldav		0
+nim	MaxInstances	ndav/caldav.html#MaxInstances	const MaxInstances		33
+nim	rkQuery	ndav/caldav.html#rkQuery	CalReportKind.rkQuery		37
+nim	rkMultiget	ndav/caldav.html#rkMultiget	CalReportKind.rkMultiget		37
+nim	CalReportKind	ndav/caldav.html#CalReportKind	enum CalReportKind		37
+nim	CalTimeRange	ndav/caldav.html#CalTimeRange	object CalTimeRange		41
+nim	CalReportRequest	ndav/caldav.html#CalReportRequest	object CalReportRequest		47
+nim	nodeText	ndav/caldav.html#nodeText,XmlNode	proc nodeText(node: XmlNode): string		59
+nim	parseMkcalendarProps	ndav/caldav.html#parseMkcalendarProps,string	proc parseMkcalendarProps(body: string): seq[DavProp]		72
+nim	icalToUnix	ndav/caldav.html#icalToUnix,IcalDateTime	proc icalToUnix(dt: IcalDateTime): int64		89
+nim	weekdayMon1	ndav/caldav.html#weekdayMon1,int64	proc weekdayMon1(unix: int64): int		120
+nim	parseCalReport	ndav/caldav.html#parseCalReport,string	proc parseCalReport(body: string): CalReportRequest		144
+nim	Rrule	ndav/caldav.html#Rrule	object Rrule		205
+nim	parseRrule	ndav/caldav.html#parseRrule,string	proc parseRrule(raw: string): Rrule		214
+nim	expandStarts	ndav/caldav.html#expandStarts,int64,Rrule,HashSet[int64],tuple[bool,int64],tuple[bool,int64]	proc expandStarts(startUnix: int64; rrule: Rrule; exdates: HashSet[int64];\n             rangeStart, rangeEnd: tuple[has: bool, v: int64];\n             cap = MaxInstances): seq[int64]		274
+nim	compKindName	ndav/caldav.html#compKindName,IcalComponent	proc compKindName(comp: IcalComponent): string		418
+nim	exdateSet	ndav/caldav.html#exdateSet,seq[IcalDt]	proc exdateSet(dts: seq[IcalDt]): HashSet[int64]		426
+nim	componentMatches	ndav/caldav.html#componentMatches,IcalComponent,string,CalTimeRange,bool	proc componentMatches(comp: IcalComponent; compName: string; tr: CalTimeRange;\n                 hasTr: bool): bool		434
+nim	resourceMatches	ndav/caldav.html#resourceMatches,string,string,CalTimeRange,bool	proc resourceMatches(content: string; compName: string; tr: CalTimeRange; hasTr: bool): bool		492
+nim	isCalendarContent	ndav/caldav.html#isCalendarContent,string	proc isCalendarContent(content: string): bool		511
+nim	calDataProp	ndav/caldav.html#calDataProp,string	proc calDataProp(content: string): DavProp		527

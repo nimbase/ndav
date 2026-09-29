@@ -1,0 +1,25 @@
+nimTitle	carddav	ndav/carddav.html	module ndav/carddav		0
+nim	SupportedAddressData	ndav/carddav.html#SupportedAddressData	const SupportedAddressData		45
+nim	rkAddressQuery	ndav/carddav.html#rkAddressQuery	CardReportKind.rkAddressQuery		49
+nim	rkAddressMultiget	ndav/carddav.html#rkAddressMultiget	CardReportKind.rkAddressMultiget		49
+nim	CardReportKind	ndav/carddav.html#CardReportKind	enum CardReportKind		49
+nim	CardTextMatch	ndav/carddav.html#CardTextMatch	object CardTextMatch		53
+nim	CardParamFilter	ndav/carddav.html#CardParamFilter	object CardParamFilter		59
+nim	CardPropFilter	ndav/carddav.html#CardPropFilter	object CardPropFilter		65
+nim	CardAddressDataPref	ndav/carddav.html#CardAddressDataPref	object CardAddressDataPref		72
+nim	CardReportRequest	ndav/carddav.html#CardReportRequest	object CardReportRequest		77
+nim	SyncCollectionRequest	ndav/carddav.html#SyncCollectionRequest	object SyncCollectionRequest		91
+nim	parseMkcolAddressbook	ndav/carddav.html#parseMkcolAddressbook,string	proc parseMkcolAddressbook(body: string): tuple[isAddressbook: bool,\n    props: seq[DavProp]]		137
+nim	parseCardReport	ndav/carddav.html#parseCardReport,string	proc parseCardReport(body: string): CardReportRequest		265
+nim	parseSyncCollection	ndav/carddav.html#parseSyncCollection,string	proc parseSyncCollection(body: string): SyncCollectionRequest		312
+nim	cardPropValues	ndav/carddav.html#cardPropValues,VCard,string	proc cardPropValues(card: VCard; propName: string): seq[string]		359
+nim	cardPropExists	ndav/carddav.html#cardPropExists,VCard,string	proc cardPropExists(card: VCard; propName: string): bool		454
+nim	cardParamValues	ndav/carddav.html#cardParamValues,VCard,string,string	proc cardParamValues(card: VCard; propName, paramName: string): seq[string]		500
+nim	propFilterMatches	ndav/carddav.html#propFilterMatches,VCard,CardPropFilter	proc propFilterMatches(card: VCard; pf: CardPropFilter): bool		614
+nim	cardMatches	ndav/carddav.html#cardMatches,VCard,seq[CardPropFilter],bool	proc cardMatches(card: VCard; filters: seq[CardPropFilter]; testAnyOf: bool): bool		642
+nim	resourceMatches	ndav/carddav.html#resourceMatches,string,seq[CardPropFilter],bool	proc resourceMatches(content: string; filters: seq[CardPropFilter]; testAnyOf: bool): bool		656
+nim	isAddressContent	ndav/carddav.html#isAddressContent,string	proc isAddressContent(content: string): bool		675
+nim	requireSingleAddress	ndav/carddav.html#requireSingleAddress,string	proc requireSingleAddress(content: string): VCard		688
+nim	addressDataTarget	ndav/carddav.html#addressDataTarget,seq[CardAddressDataPref]	proc addressDataTarget(prefs: seq[CardAddressDataPref]): VCardVersion		701
+nim	convertAddressData	ndav/carddav.html#convertAddressData,string,VCardVersion	proc convertAddressData(content: string; target: VCardVersion): string		714
+nim	addressDataProp	ndav/carddav.html#addressDataProp,string	proc addressDataProp(content: string): DavProp		733

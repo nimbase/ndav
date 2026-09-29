@@ -1,0 +1,51 @@
+nimTitle	backend	ndav/backend.html	module ndav/backend		0
+nim	DeadProp	ndav/backend.html#DeadProp	object DeadProp		20
+nim	SyncChange	ndav/backend.html#SyncChange	object SyncChange		25
+nim	DavBackend	ndav/backend.html#DavBackend	type DavBackend		29
+nim	MemoryDriver	ndav/backend.html#MemoryDriver	type MemoryDriver		46
+nim	newMemoryDriver	ndav/backend.html#newMemoryDriver	proc newMemoryDriver(): MemoryDriver		64
+nim	write	ndav/backend.html#write.e,MemoryDriver,string,string	method write(d: MemoryDriver; path, content: string; visibility = visPrivate)		68
+nim	read	ndav/backend.html#read.e,MemoryDriver,string	method read(d: MemoryDriver; path: string): string		78
+nim	delete	ndav/backend.html#delete.e,MemoryDriver,string	method delete(d: MemoryDriver; path: string)		84
+nim	exists	ndav/backend.html#exists.e,MemoryDriver,string	method exists(d: MemoryDriver; path: string): bool		96
+nim	metadata	ndav/backend.html#metadata.e,MemoryDriver,string	method metadata(d: MemoryDriver; path: string): FileMetadata		104
+nim	list	ndav/backend.html#list.e,MemoryDriver,string	method list(d: MemoryDriver; path: string; recursive = false): seq[FileMetadata]		110
+nim	makeDir	ndav/backend.html#makeDir.e,MemoryDriver,string	method makeDir(d: MemoryDriver; path: string)		124
+nim	deleteDir	ndav/backend.html#deleteDir.e,MemoryDriver,string	method deleteDir(d: MemoryDriver; path: string; force = false)		136
+nim	copy	ndav/backend.html#copy.e,MemoryDriver,string,string	method copy(d: MemoryDriver; src, dest: string)		162
+nim	copyDir	ndav/backend.html#copyDir.e,MemoryDriver,string,string	method copyDir(d: MemoryDriver; src, dest: string)		173
+nim	move	ndav/backend.html#move.e,MemoryDriver,string,string	method move(d: MemoryDriver; src, dest: string)		191
+nim	moveDir	ndav/backend.html#moveDir.e,MemoryDriver,string,string	method moveDir(d: MemoryDriver; src, dest: string)		195
+nim	touch	ndav/backend.html#touch.e,MemoryDriver,string	method touch(d: MemoryDriver; path: string)		199
+nim	setVisibility	ndav/backend.html#setVisibility.e,MemoryDriver,string,Visibility	method setVisibility(d: MemoryDriver; path: string; visibility: Visibility)		206
+nim	visibility	ndav/backend.html#visibility.e,MemoryDriver,string	method visibility(d: MemoryDriver; path: string): Visibility		213
+nim	mimeType	ndav/backend.html#mimeType.e,MemoryDriver,string	method mimeType(d: MemoryDriver; path: string): string		219
+nim	append	ndav/backend.html#append.e,MemoryDriver,string,string	method append(d: MemoryDriver; path, content: string)		225
+nim	newDavBackend	ndav/backend.html#newDavBackend,StorageDriver	proc newDavBackend(driver: StorageDriver; users = initTable[string, string]()): DavBackend		235
+nim	isCalendarCollection	ndav/backend.html#isCalendarCollection,DavBackend,string	proc isCalendarCollection(b: DavBackend; urlPath: string): bool		245
+nim	markCalendar	ndav/backend.html#markCalendar,DavBackend,string	proc markCalendar(b: DavBackend; urlPath: string)		249
+nim	isAddressbookCollection	ndav/backend.html#isAddressbookCollection,DavBackend,string	proc isAddressbookCollection(b: DavBackend; urlPath: string): bool		255
+nim	PrincipalsRoot	ndav/backend.html#PrincipalsRoot	const PrincipalsRoot		259
+nim	principalUserName	ndav/backend.html#principalUserName,string	proc principalUserName(urlPath: string): string		263
+nim	isPrincipalsCollection	ndav/backend.html#isPrincipalsCollection,string	proc isPrincipalsCollection(urlPath: string): bool		273
+nim	isPrincipalResource	ndav/backend.html#isPrincipalResource,DavBackend,string	proc isPrincipalResource(b: DavBackend; urlPath: string): bool		276
+nim	isPrincipalPath	ndav/backend.html#isPrincipalPath,DavBackend,string	proc isPrincipalPath(b: DavBackend; urlPath: string): bool		281
+nim	isPrincipalsSubtree	ndav/backend.html#isPrincipalsSubtree,string	proc isPrincipalsSubtree(urlPath: string): bool		285
+nim	principalHref	ndav/backend.html#principalHref,string	proc principalHref(name: string): string		290
+nim	markAddressbook	ndav/backend.html#markAddressbook,DavBackend,string	proc markAddressbook(b: DavBackend; urlPath: string)		294
+nim	toDriverPath	ndav/backend.html#toDriverPath,string	proc toDriverPath(urlPath: string): string		300
+nim	getDead	ndav/backend.html#getDead,DavBackend,string	proc getDead(b: DavBackend; urlPath: string): Table[string, DeadProp]		307
+nim	setDead	ndav/backend.html#setDead,DavBackend,string,string,string,string,string	proc setDead(b: DavBackend; urlPath, ns, name, value, xml: string)		310
+nim	delDead	ndav/backend.html#delDead,DavBackend,string,string,string	proc delDead(b: DavBackend; urlPath, ns, name: string): bool		316
+nim	forgetDead	ndav/backend.html#forgetDead,DavBackend,string	proc forgetDead(b: DavBackend; urlPath: string)		324
+nim	copyDead	ndav/backend.html#copyDead,DavBackend,string,string,bool	proc copyDead(b: DavBackend; src, dest: string; overwrite: bool)		354
+nim	moveDead	ndav/backend.html#moveDead,DavBackend,string,string,bool	proc moveDead(b: DavBackend; src, dest: string; overwrite: bool)		403
+nim	MaxSyncDeletes	ndav/backend.html#MaxSyncDeletes	const MaxSyncDeletes		408
+nim	isSyncCollection	ndav/backend.html#isSyncCollection,DavBackend,string	proc isSyncCollection(b: DavBackend; urlPath: string): bool		412
+nim	syncRevOf	ndav/backend.html#syncRevOf,DavBackend,string	proc syncRevOf(b: DavBackend; coll: string): int		416
+nim	ensureSyncLog	ndav/backend.html#ensureSyncLog,DavBackend,string	proc ensureSyncLog(b: DavBackend; coll: string)		419
+nim	bumpSync	ndav/backend.html#bumpSync,DavBackend,string	proc bumpSync(b: DavBackend; coll: string): int		425
+nim	recordSyncDelete	ndav/backend.html#recordSyncDelete,DavBackend,string,string	proc recordSyncDelete(b: DavBackend; coll, href: string): int		436
+nim	makeSyncToken	ndav/backend.html#makeSyncToken,DavBackend,string,string	proc makeSyncToken(b: DavBackend; coll, ctag: string): string		453
+nim	splitSyncToken	ndav/backend.html#splitSyncToken,string	proc splitSyncToken(tok: string): tuple[ctag: string, rev: int, ok: bool]		459
+nim	syncDeletesSince	ndav/backend.html#syncDeletesSince,DavBackend,string,int	proc syncDeletesSince(b: DavBackend; coll: string; sinceRev: int): tuple[\n    hrefs: seq[string], known: bool]		469

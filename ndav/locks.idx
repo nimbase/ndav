@@ -1,0 +1,29 @@
+nimTitle	locks	ndav/locks.html	module ndav/locks		0
+nim	DefaultLockTimeout	ndav/locks.html#DefaultLockTimeout	const DefaultLockTimeout		18
+nim	MaxLockTimeout	ndav/locks.html#MaxLockTimeout	const MaxLockTimeout		20
+nim	DavLockConflict	ndav/locks.html#DavLockConflict	object DavLockConflict		24
+nim	lsExclusive	ndav/locks.html#lsExclusive	DavLockScope.lsExclusive		28
+nim	lsShared	ndav/locks.html#lsShared	DavLockScope.lsShared		28
+nim	DavLockScope	ndav/locks.html#DavLockScope	enum DavLockScope		28
+nim	DavLock	ndav/locks.html#DavLock	type DavLock		32
+nim	LockManager	ndav/locks.html#LockManager	type LockManager		41
+nim	IfToken	ndav/locks.html#IfToken	object IfToken		44
+nim	IfGroup	ndav/locks.html#IfGroup	object IfGroup		48
+nim	newLockManager	ndav/locks.html#newLockManager	proc newLockManager(): LockManager		52
+nim	newLockToken	ndav/locks.html#newLockToken	proc newLockToken(): string		55
+nim	isExpired	ndav/locks.html#isExpired,DavLock	proc isExpired(lock: DavLock; now = getTime()): bool		58
+nim	purgeExpired	ndav/locks.html#purgeExpired,LockManager	proc purgeExpired(m: LockManager)		61
+nim	covers	ndav/locks.html#covers,DavLock,string	proc covers(lock: DavLock; path: string): bool		70
+nim	findCovering	ndav/locks.html#findCovering,LockManager,string	proc findCovering(m: LockManager; path: string): seq[DavLock]		76
+nim	acquire	ndav/locks.html#acquire,LockManager,string,DavLockScope,int,string,int	proc acquire(m: LockManager; path: string; scope: DavLockScope; depth: int;\n        owner: string; timeout: int): DavLock		86
+nim	getToken	ndav/locks.html#getToken,LockManager,string	proc getToken(m: LockManager; token: string): DavLock		103
+nim	refresh	ndav/locks.html#refresh,LockManager,string,int	proc refresh(m: LockManager; token: string; timeout: int): bool		108
+nim	release	ndav/locks.html#release,LockManager,string,string	proc release(m: LockManager; token, path: string): bool		117
+nim	parseTimeout	ndav/locks.html#parseTimeout,string	proc parseTimeout(s: string; default = DefaultLockTimeout): int		127
+nim	parseDepthLock	ndav/locks.html#parseDepthLock,string	proc parseDepthLock(s: string): int		142
+nim	parseLockTokens	ndav/locks.html#parseLockTokens,string	proc parseLockTokens(s: string): seq[string]		149
+nim	parseIf	ndav/locks.html#parseIf,string	proc parseIf(s: string): seq[IfGroup]		162
+nim	ifSatisfied	ndav/locks.html#ifSatisfied,LockManager,string,string,seq[string]	proc ifSatisfied(m: LockManager; path: string; ifHeader: string;\n            lockTokens: seq[string] = @[]): bool		218
+nim	xmlEscape	ndav/locks.html#xmlEscape,string	proc xmlEscape(s: string): string		249
+nim	activeLockXml	ndav/locks.html#activeLockXml,DavLock,string	proc activeLockXml(lock: DavLock; href: string): string		259
+nim	lockDiscoveryXml	ndav/locks.html#lockDiscoveryXml,LockManager,string	proc lockDiscoveryXml(m: LockManager; path: string): string		280

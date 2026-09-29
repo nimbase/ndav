@@ -1,0 +1,44 @@
+nimTitle	davxml	ndav/davxml.html	module ndav/davxml		0
+nim	DavNs	ndav/davxml.html#DavNs	const DavNs		18
+nim	CalNs	ndav/davxml.html#CalNs	const CalNs		20
+nim	CardNs	ndav/davxml.html#CardNs	const CardNs		22
+nim	MaxDavDepth	ndav/davxml.html#MaxDavDepth	const MaxDavDepth		24
+nim	MaxDavNodes	ndav/davxml.html#MaxDavNodes	const MaxDavNodes		26
+nim	DavXmlError	ndav/davxml.html#DavXmlError	object DavXmlError		30
+nim	pfAllprop	ndav/davxml.html#pfAllprop	PropfindKind.pfAllprop		32
+nim	pfPropname	ndav/davxml.html#pfPropname	PropfindKind.pfPropname		32
+nim	pfProp	ndav/davxml.html#pfProp	PropfindKind.pfProp		32
+nim	PropfindKind	ndav/davxml.html#PropfindKind	enum PropfindKind		32
+nim	PropfindRequest	ndav/davxml.html#PropfindRequest	object PropfindRequest		37
+nim	poSet	ndav/davxml.html#poSet	PropOp.poSet		41
+nim	poRemove	ndav/davxml.html#poRemove	PropOp.poRemove		41
+nim	PropOp	ndav/davxml.html#PropOp	enum PropOp		41
+nim	PropUpdate	ndav/davxml.html#PropUpdate	object PropUpdate		45
+nim	PropertyupdateRequest	ndav/davxml.html#PropertyupdateRequest	object PropertyupdateRequest		49
+nim	LockinfoRequest	ndav/davxml.html#LockinfoRequest	object LockinfoRequest		52
+nim	DavProp	ndav/davxml.html#DavProp	object DavProp		57
+nim	DavPropstat	ndav/davxml.html#DavPropstat	object DavPropstat		64
+nim	DavResponse	ndav/davxml.html#DavResponse	object DavResponse		68
+nim	localName	ndav/davxml.html#localName,string	proc localName(tag: string): string		72
+nim	hasDavNs	ndav/davxml.html#hasDavNs,XmlNode	proc hasDavNs(node: XmlNode): bool		77
+nim	parseDavXml	ndav/davxml.html#parseDavXml,string	proc parseDavXml(body: string): XmlNode		95
+nim	localNameOf	ndav/davxml.html#localNameOf,XmlNode	proc localNameOf(node: XmlNode): string		109
+nim	requireDavRoot	ndav/davxml.html#requireDavRoot,XmlNode,string	proc requireDavRoot(root: XmlNode; local: string): XmlNode		112
+nim	findChild	ndav/davxml.html#findChild,XmlNode,string	proc findChild(parent: XmlNode; local: string): XmlNode		119
+nim	childrenByLocal	ndav/davxml.html#childrenByLocal,XmlNode,string	proc childrenByLocal(parent: XmlNode; local: string): seq[XmlNode]		127
+nim	childText	ndav/davxml.html#childText,XmlNode,string	proc childText(parent: XmlNode; local: string): string		133
+nim	elementChildren	ndav/davxml.html#elementChildren,XmlNode	proc elementChildren(parent: XmlNode): seq[XmlNode]		141
+nim	parsePropfind	ndav/davxml.html#parsePropfind,string	proc parsePropfind(body: string): PropfindRequest		147
+nim	parsePropValue	ndav/davxml.html#parsePropValue,XmlNode	proc parsePropValue(node: XmlNode; ns = DavNs): DavProp		161
+nim	parseFragment	ndav/davxml.html#parseFragment,string	proc parseFragment(xmlStr: string): seq[XmlNode]		180
+nim	parsePropertyupdate	ndav/davxml.html#parsePropertyupdate,string	proc parsePropertyupdate(body: string): PropertyupdateRequest		186
+nim	parseLockinfo	ndav/davxml.html#parseLockinfo,string	proc parseLockinfo(body: string): LockinfoRequest		212
+nim	newDavElement	ndav/davxml.html#newDavElement,string	proc newDavElement(local: string): XmlNode		228
+nim	newCalElement	ndav/davxml.html#newCalElement,string	proc newCalElement(local: string): XmlNode		232
+nim	newCardElement	ndav/davxml.html#newCardElement,string	proc newCardElement(local: string): XmlNode		236
+nim	hasCalNs	ndav/davxml.html#hasCalNs,XmlNode	proc hasCalNs(node: XmlNode): bool		241
+nim	hasCardNs	ndav/davxml.html#hasCardNs,XmlNode	proc hasCardNs(node: XmlNode): bool		249
+nim	davDoc	ndav/davxml.html#davDoc,XmlNode	proc davDoc(root: XmlNode): string		257
+nim	propstatCode	ndav/davxml.html#propstatCode,string	proc propstatCode(status: string): int		261
+nim	parseMultistatus	ndav/davxml.html#parseMultistatus,string	proc parseMultistatus(body: string): seq[DavResponse]		279
+nim	buildMultistatus	ndav/davxml.html#buildMultistatus,seq[DavResponse],string	proc buildMultistatus(responses: seq[DavResponse]; syncToken = ""): string		301

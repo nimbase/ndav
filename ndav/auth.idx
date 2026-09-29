@@ -1,0 +1,10 @@
+nimTitle	auth	ndav/auth.html	module ndav/auth		0
+nim	DavAuthError	ndav/auth.html#DavAuthError	object DavAuthError		16
+nim	BasicCreds	ndav/auth.html#BasicCreds	object BasicCreds		18
+nim	AuthRealm	ndav/auth.html#AuthRealm	const AuthRealm		23
+nim	DummyHash	ndav/auth.html#DummyHash	const DummyHash		26
+nim	validUserName	ndav/auth.html#validUserName,string	proc validUserName(name: string): bool		32
+nim	parseBasic	ndav/auth.html#parseBasic,string	proc parseBasic(header: string): BasicCreds		42
+nim	verifyUser	ndav/auth.html#verifyUser,Table[string,string],string,string	proc verifyUser(users: Table[string, string]; user, pass: string): bool		62
+nim	encodeBasic	ndav/auth.html#encodeBasic,string,string	proc encodeBasic(user, pass: string): string		68
+nim	challengeHeader	ndav/auth.html#challengeHeader	proc challengeHeader(realm = AuthRealm): string		72

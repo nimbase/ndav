@@ -1,0 +1,43 @@
+nimTitle	client	ndav/client.html	module ndav/client		0
+nim	DavClientError	ndav/client.html#DavClientError	object DavClientError		24
+nim	DavClient	ndav/client.html#DavClient	type DavClient		26
+nim	wrapDavClient	ndav/client.html#wrapDavClient,HttpClient,string	proc wrapDavClient(http: HttpClient; base: string): DavClient		31
+nim	newDavClient	ndav/client.html#newDavClient,string,int	proc newDavClient(base: string; timeoutMs = 0): DavClient		37
+nim	closeClient	ndav/client.html#closeClient,DavClient	proc closeClient(c: DavClient)		41
+nim	setAuth	ndav/client.html#setAuth,DavClient,string,string	proc setAuth(c: DavClient; user, pass: string)		46
+nim	clearAuth	ndav/client.html#clearAuth,DavClient	proc clearAuth(c: DavClient)		50
+nim	urlFor	ndav/client.html#urlFor,DavClient,string	proc urlFor(c: DavClient; path: string): string		54
+nim	raw	ndav/client.html#raw,DavClient,HttpMethod,string,string,openArray[]	proc raw(c: DavClient; meth: HttpMethod; path: string; body = "";\n    headers: openArray[(string, string)] = []): HttpClientResponse		66
+nim	buildPropfindAllprop	ndav/client.html#buildPropfindAllprop	proc buildPropfindAllprop(): string		91
+nim	buildPropfindProp	ndav/client.html#buildPropfindProp,seq[string]	proc buildPropfindProp(names: seq[string]): string		97
+nim	buildPropertyupdate	ndav/client.html#buildPropertyupdate,seq[DavProp],seq[DavProp]	proc buildPropertyupdate(sets, removes: seq[DavProp]): string		106
+nim	buildLockinfo	ndav/client.html#buildLockinfo,string,string	proc buildLockinfo(scope = "exclusive"; owner = ""): string		129
+nim	buildCalendarQuery	ndav/client.html#buildCalendarQuery,string,string,string,seq[string]	proc buildCalendarQuery(compName = "VEVENT"; rangeStart = ""; rangeEnd = "";\n                   wantEtag = true; wantCalData = true;\n                   extra: seq[string] = @[]): string		147
+nim	addressDataElement	ndav/client.html#addressDataElement,string,string	proc addressDataElement(version = ""; contentType = ""): XmlNode		182
+nim	buildAddressbookQuery	ndav/client.html#buildAddressbookQuery,seq[string],string,seq[string],int,string	proc buildAddressbookQuery(filters: seq[string] = @["FN"]; text: string = "";\n                      wantEtag = true; wantAddressData = true;\n                      extra: seq[string] = @[]; testAnyOf = false; limit = -1;\n                      version = ""): string		191
+nim	buildAddressbookMultiget	ndav/client.html#buildAddressbookMultiget,seq[string],seq[string],string	proc buildAddressbookMultiget(hrefs: seq[string]; wantEtag = true;\n                         wantAddressData = true; extra: seq[string] = @[];\n                         version = ""): string		234
+nim	buildSyncCollection	ndav/client.html#buildSyncCollection,string,seq[string],string,int	proc buildSyncCollection(token = ""; wantEtag = true; wantAddressData = true;\n                    extra: seq[string] = @[]; version = ""; limit = -1): string		256
+nim	buildCalSyncCollection	ndav/client.html#buildCalSyncCollection,string,seq[string],int	proc buildCalSyncCollection(token = ""; wantEtag = true; wantCalData = true;\n                       extra: seq[string] = @[]; limit = -1): string		288
+nim	buildMkcolAddressbook	ndav/client.html#buildMkcolAddressbook,string,string	proc buildMkcolAddressbook(displayname = ""; description = ""): string		319
+nim	buildCalendarMultiget	ndav/client.html#buildCalendarMultiget,seq[string],seq[string]	proc buildCalendarMultiget(hrefs: seq[string]; wantEtag = true; wantCalData = true;\n                      extra: seq[string] = @[]): string		343
+nim	options	ndav/client.html#options,DavClient,string	proc options(c: DavClient; path = "/"): HttpClientResponse		366
+nim	get	ndav/client.html#get,DavClient,string,openArray[]	proc get(c: DavClient; path: string; headers: openArray[(string, string)] = []): HttpClientResponse		369
+nim	head	ndav/client.html#head,DavClient,string,openArray[]	proc head(c: DavClient; path: string; headers: openArray[(string, string)] = []): HttpClientResponse		373
+nim	put	ndav/client.html#put,DavClient,string,string,openArray[]	proc put(c: DavClient; path, body: string; headers: openArray[(string, string)] = []): HttpClientResponse		377
+nim	delete	ndav/client.html#delete,DavClient,string,openArray[]	proc delete(c: DavClient; path: string; headers: openArray[(string, string)] = []): HttpClientResponse		381
+nim	mkcol	ndav/client.html#mkcol,DavClient,string,string	proc mkcol(c: DavClient; path: string; body = ""): HttpClientResponse		385
+nim	mkcolAddressbook	ndav/client.html#mkcolAddressbook,DavClient,string,string,string	proc mkcolAddressbook(c: DavClient; path: string; displayname = ""; description = ""): HttpClientResponse		389
+nim	mkcalendar	ndav/client.html#mkcalendar,DavClient,string,string	proc mkcalendar(c: DavClient; path: string; body = ""): HttpClientResponse		394
+nim	propfind	ndav/client.html#propfind,DavClient,string,string,string	proc propfind(c: DavClient; path: string; depth = "1"; body = ""): HttpClientResponse		397
+nim	proppatch	ndav/client.html#proppatch,DavClient,string,seq[DavProp],seq[DavProp]	proc proppatch(c: DavClient; path: string; sets: seq[DavProp] = @[];\n          removes: seq[DavProp] = @[]): HttpClientResponse		402
+nim	copy	ndav/client.html#copy,DavClient,string,string,string	proc copy(c: DavClient; path, dest: string; overwrite = true; depth = "infinity"): HttpClientResponse		406
+nim	move	ndav/client.html#move,DavClient,string,string	proc move(c: DavClient; path, dest: string; overwrite = true): HttpClientResponse		411
+nim	lock	ndav/client.html#lock,DavClient,string,string,string,string,string	proc lock(c: DavClient; path: string; scope = "exclusive"; depth = "infinity";\n     timeout = ""; owner = ""): HttpClientResponse		416
+nim	unlock	ndav/client.html#unlock,DavClient,string,string	proc unlock(c: DavClient; path, token: string): HttpClientResponse		424
+nim	report	ndav/client.html#report,DavClient,string,string,string	proc report(c: DavClient; path, body: string; depth = "1"): HttpClientResponse		427
+nim	ensure	ndav/client.html#ensure,HttpClientResponse,varargs[HttpCode]	proc ensure(res: HttpClientResponse; expected: varargs[HttpCode]): HttpClientResponse		433
+nim	multistatus	ndav/client.html#multistatus,HttpClientResponse	proc multistatus(res: HttpClientResponse): seq[DavResponse]		444
+nim	lockTokenOf	ndav/client.html#lockTokenOf,HttpClientResponse	proc lockTokenOf(res: HttpClientResponse): string		455
+nim	syncTokenOf	ndav/client.html#syncTokenOf,string	proc syncTokenOf(body: string): string		462
+nim	findResponse	ndav/client.html#findResponse,seq[DavResponse],string	proc findResponse(rs: seq[DavResponse]; href: string): int		480
+nim	okProps	ndav/client.html#okProps,DavResponse	proc okProps(r: DavResponse): seq[DavProp]		487

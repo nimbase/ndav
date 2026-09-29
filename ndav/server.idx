@@ -1,0 +1,6 @@
+nimTitle	server	ndav/server.html	module ndav/server		0
+nim	DavAllow	ndav/server.html#DavAllow	const DavAllow		53
+nim	DavServer	ndav/server.html#DavServer	type DavServer		57
+nim	newDavServer	ndav/server.html#newDavServer,StorageDriver	proc newDavServer(driver: StorageDriver; users = initTable[string, string]()): DavServer		60
+nim	serve	ndav/server.html#serve,DavServer,HttpRequest,HttpResponse	proc serve(srv: DavServer; req: HttpRequest; res: HttpResponse)		64
+nim	davHandler	ndav/server.html#davHandler,DavServer	proc davHandler(srv: DavServer): OnRequestCallback		69
