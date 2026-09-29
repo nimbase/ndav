@@ -2,7 +2,7 @@
 
 version       = "0.1.0"
 author        = "George Lemon"
-description   = "Fast WebDAV, CalDAV and CardDAV server and client on top of powpow"
+description   = "WebDAV, CalDAV/CardDAV server and client. Powered by PowPow"
 license       = "MIT"
 srcDir        = "src"
 bin           = @["ndav"]
