@@ -24,6 +24,7 @@
 - Runs on Linux, macOS and Windows (should)
 - Use it as a library (build on top of nDAV) or as a CLI binary
 - Optional HTTP Basic auth with Argon2id password hashes using [nimcypher](https://github.com/nimbase/nimcypher)
+- Passwords set via `ndav passwd` are strength-checked with [BlackPaper](https://github.com/openpeeps/blackpaper) - weak ones are rejected with actionable feedback
 
 **File sharing**
 

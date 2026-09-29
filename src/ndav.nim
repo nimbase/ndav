@@ -27,6 +27,7 @@ when isMainModule:
   # extra CLI dependency. Option values use the `--opt=value` form;
   # `--opt value` (space) works for string/int options as well.
   import std/[os, parseopt, strutils, terminal]
+  import pkg/blackpaper
   import ndav/config
 
   const progName = "ndav"
@@ -88,6 +89,7 @@ when isMainModule:
     echo "Usage: " & progName & " passwd [--config=FILE] <username>"
     echo ""
     echo "Set a user's password (Argon2id hash in the config file)."
+    echo "Passwords rated Weak by the strength estimator are rejected."
     echo ""
     printHeading("Options:")
     echo "  --config=FILE    TOML config file (default: ./webdav.config.toml when present)"
@@ -234,6 +236,15 @@ when isMainModule:
       quit(e.msg, 1)
     echo "wrote " & path
 
+  proc strengthHint(reason: PasswordStrengthReason): string =
+    ## Human-readable cause for a `Weak` blackpaper verdict.
+    case reason
+    of TooShort: "too short, minimum 8 characters"
+    of NotEnoughVariety: "not enough character variety"
+    of TooPredictable: "too predictable, avoid repetitions and sequences"
+    of SimilarToCommon: "too similar to a common password"
+    of GoodComplexity: "weak score"
+
   proc cmdPasswd(args: seq[string]) =
     var config = ""
     var username = ""
@@ -285,6 +296,10 @@ when isMainModule:
     let p2 = readPasswordFromStdin("Confirm: ")
     if p1 != p2:
       quit("passwd: passwords do not match", 1)
+    let strength = passwordStrength(p1)
+    if strength.strength == Weak:
+      quit("passwd: password too weak (" & strengthHint(strength.reason) &
+        "); choose a longer password mixing upper/lowercase, digits and symbols", 1)
     try:
       setUserHash(cfgPath, username, hashPassword(p1))
     except IOError as e:
