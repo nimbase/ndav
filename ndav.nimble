@@ -5,16 +5,16 @@ author        = "George Lemon"
 description   = "Fast WebDAV, CalDAV and CardDAV server and client on top of powpow"
 license       = "MIT"
 srcDir        = "src"
-bin           = @["webdav"]
+bin           = @["ndav"]
 binDir        = "bin"
-installExt    = @["webdav"]
-installDirs   = @["webdav"]
+installExt    = @["ndav"]
+installDirs   = @["ndav"]
 
 
 # Dependencies
 
 requires "nim >= 2.2.0"
-requires "powpow >= 0.1.12"
+requires "powpow >= 0.2.0"
 requires "voodoo >= 0.2.0"
 requires "openparser >= 0.3.3"
 requires "flysystem >= 0.2.0"

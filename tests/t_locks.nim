@@ -4,7 +4,7 @@ import std/strutils
 import std/times
 import std/httpcore except HttpMethod
 
-import webdav
+import ndav
 
 suite "lock manager units":
   test "exclusive conflicts, shared-shared passes":

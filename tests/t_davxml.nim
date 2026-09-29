@@ -2,7 +2,7 @@
 import std/unittest
 import std/strutils
 
-import webdav
+import ndav
 
 suite "davxml propfind":
   test "allprop with D: prefix":

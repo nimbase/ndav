@@ -5,7 +5,7 @@ import std/strutils
 import std/options
 import std/httpcore except HttpMethod
 
-import webdav
+import ndav
 
 const
   Ada = """BEGIN:VCARD

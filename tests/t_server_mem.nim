@@ -4,7 +4,7 @@ import std/unittest
 import std/strutils
 import std/httpcore except HttpMethod
 
-import webdav
+import ndav
 
 proc withDav(body: proc(srv: DavServer, client: HttpClient, base: string)) =
   let client = newHttpClient()

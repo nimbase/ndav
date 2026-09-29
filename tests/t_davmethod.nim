@@ -3,7 +3,7 @@
 import std/unittest
 import std/httpcore except HttpMethod
 
-import webdav
+import ndav
 
 suite "davmethod extension":
   test "all seven WebDAV verbs parse":

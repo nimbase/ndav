@@ -2,11 +2,11 @@
 #
 # `davmethod` must be imported first so the WebDAV verbs are staged via
 # pkg/voodoo before powpow compiles. Keep that order here and in user code
-# (`import webdav` before any direct `import powpow`).
+# (`import ndav` before any direct `import powpow`).
 
-import webdav/davmethod
+import ndav/davmethod
 import powpow
-import webdav/[types, davxml, auth, backend, props, caldav, carddav, server, client]
+import ndav/[types, davxml, auth, backend, props, caldav, carddav, server, client]
 
 export davmethod
 export powpow
@@ -22,11 +22,11 @@ export client
 
 when isMainModule:
   # Server binary: `clue build` (see `bin`/`binDir` in webdav.nimble).
-  # Library users (`import webdav`) never compile this block.
+  # Library users (`import ndav`) never compile this block.
   # Option values use the `--opt=value` form.
   import std/terminal
   import kapsis
-  import webdav/config
+  import ndav/config
 
   proc serveCommand(v: Values) =
     let root = if v.has("--root"): v.get("--root").getStr else: ""

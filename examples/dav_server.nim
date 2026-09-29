@@ -9,10 +9,10 @@
 ##   curl -X PUT http://localhost:9001/hello.txt -d 'hi' -i
 ##   curl -X PROPFIND http://localhost:9001/ -H 'Depth: 1' -i
 ##
-## IMPORTANT: `import webdav` must come before any direct `import powpow`
+## IMPORTANT: `import ndav` must come before any direct `import powpow`
 ## so the DAV verbs are staged before powpow compiles.
 
-import webdav
+import ndav
 import std/[os, strutils]
 
 let root = if paramCount() >= 1: paramStr(1) else: getCurrentDir() / "davroot"

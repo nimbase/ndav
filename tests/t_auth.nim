@@ -6,8 +6,8 @@ import std/tables
 import std/os
 import std/httpcore except HttpMethod
 
-import webdav
-import webdav/config
+import ndav
+import ndav/config
 
 let AliceHash = hashPassword("alicepw")
 

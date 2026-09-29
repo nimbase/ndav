@@ -3,10 +3,10 @@
 # Import this module BEFORE any powpow module so the extensions are staged
 # before powpow compiles:
 #
-#   import webdav/davmethod  # first
+#   import ndav/davmethod  # first
 #   import powpow            # after
 #
-# In practice just `import webdav`, which orders this correctly.
+# In practice just `import ndav`, which orders this correctly.
 
 import pkg/voodoo/extensibles
 

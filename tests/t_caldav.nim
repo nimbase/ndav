@@ -5,7 +5,7 @@ import std/strutils
 import std/sets
 import std/httpcore except HttpMethod
 
-import webdav
+import ndav
 
 const
   Ev1 = """BEGIN:VCALENDAR

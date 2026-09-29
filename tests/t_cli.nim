@@ -2,7 +2,7 @@
 import std/unittest
 import std/os
 
-import webdav/config
+import ndav/config
 
 proc tmpToml(name, content: string): string =
   result = getTempDir() / name
